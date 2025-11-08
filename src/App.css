@@ -1,0 +1,145 @@
+.app {
+  min-height: 100vh;
+  background: #0e0e10;
+}
+
+.header {
+  background: linear-gradient(135deg, #9147ff 0%, #772ce8 100%);
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.header-content h1 {
+  font-size: 2rem;
+  margin: 0;
+  color: white;
+}
+
+.header-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 968px) {
+  .two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: #18181b;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  border: 1px solid #2c2c34;
+}
+
+.card h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: #efeff1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.button {
+  background: #9147ff;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.button:hover {
+  background: #772ce8;
+  transform: translateY(-1px);
+}
+
+.button:active {
+  transform: translateY(0);
+}
+
+.button:disabled {
+  background: #3a3a3d;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.button-danger {
+  background: #eb0400;
+}
+
+.button-danger:hover {
+  background: #c90300;
+}
+
+.button-secondary {
+  background: #3a3a3d;
+}
+
+.button-secondary:hover {
+  background: #4c4c52;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-live {
+  background: #00f593;
+  color: #000;
+}
+
+.status-offline {
+  background: #3a3a3d;
+  color: #adadb8;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-item {
+  background: #1f1f23;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #2c2c34;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: #adadb8;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #efeff1;
+}

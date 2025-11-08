@@ -1,0 +1,10 @@
+node_modules/
+.env
+dist/
+data/
+*.log
+vods/
+processed/
+*.mp4
+*.ts
+

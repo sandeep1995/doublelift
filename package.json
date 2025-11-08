@@ -1,0 +1,31 @@
+{
+  "name": "doublelift-vod-streamer",
+  "version": "1.0.0",
+  "description": "Automated Twitch VOD compilation and streaming service",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "nodemon server/index.js",
+    "client": "vite",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "better-sqlite3": "^9.2.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "node-media-server": "^2.6.2",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.8",
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  }
+}

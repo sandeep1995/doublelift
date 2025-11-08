@@ -1,0 +1,41 @@
+.dashboard {
+  margin-bottom: 1.5rem;
+}
+
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #1f1f23;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  border: 1px solid #2c2c34;
+}
+
+.stream-status .status-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #efeff1;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: #1f1f23;
+  border-radius: 4px;
+  margin-top: 0.5rem;
+  border: 1px solid #2c2c34;
+}
+
+.info-label {
+  color: #adadb8;
+  font-size: 0.9rem;
+}
+
+.info-value {
+  color: #efeff1;
+  font-size: 0.9rem;
+  font-weight: 500;
+}

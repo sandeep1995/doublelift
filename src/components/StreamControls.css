@@ -1,0 +1,36 @@
+.stream-controls {
+  margin-bottom: 1.5rem;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.control-buttons .button {
+  flex: 1;
+  min-width: 150px;
+}
+
+.current-stream-info {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #1f1f23;
+  border-radius: 6px;
+  border: 1px solid #2c2c34;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.current-label {
+  color: #adadb8;
+  font-size: 0.9rem;
+}
+
+.current-value {
+  color: #00f593;
+  font-size: 1.1rem;
+  font-weight: 600;
+}

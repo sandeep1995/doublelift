@@ -1,0 +1,54 @@
+.activity-log {
+  margin-top: 1.5rem;
+}
+
+.log-items {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.log-items::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-items::-webkit-scrollbar-track {
+  background: #1f1f23;
+  border-radius: 4px;
+}
+
+.log-items::-webkit-scrollbar-thumb {
+  background: #3a3a3d;
+  border-radius: 4px;
+}
+
+.log-items::-webkit-scrollbar-thumb:hover {
+  background: #4c4c52;
+}
+
+.log-item {
+  background: #1f1f23;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: 1px solid #2c2c34;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.log-time {
+  color: #adadb8;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.log-message {
+  color: #efeff1;
+  font-size: 0.9rem;
+  flex: 1;
+}
+

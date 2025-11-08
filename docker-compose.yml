@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  doublelift:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - vod-storage:/var/doublelift/vods
+      - processed-storage:/var/doublelift/processed
+      - database:/app/data
+    environment:
+      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
+      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
+      - TWITCH_CHANNEL_ID=${TWITCH_CHANNEL_ID}
+      - TWITCH_RERUN_STREAM_KEY=${TWITCH_RERUN_STREAM_KEY}
+      - TWITCH_RERUN_CHANNEL=${TWITCH_RERUN_CHANNEL}
+      - VOD_STORAGE_PATH=/var/doublelift/vods
+      - PROCESSED_STORAGE_PATH=/var/doublelift/processed
+      - DATABASE_PATH=/app/data/doublelift.db
+      - SCAN_SCHEDULE=0 0 * * *
+      - PORT=3000
+    restart: unless-stopped
+
+volumes:
+  vod-storage:
+  processed-storage:
+  database:
+
