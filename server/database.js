@@ -37,6 +37,39 @@ export function initDatabase() {
     )
   `);
 
+  // Migrate existing tables - add new columns if they don't exist
+  const columns = db.pragma('table_info(vods)');
+  const columnNames = columns.map((col) => col.name);
+
+  if (!columnNames.includes('download_status')) {
+    db.exec(
+      `ALTER TABLE vods ADD COLUMN download_status TEXT DEFAULT 'pending'`
+    );
+    console.log('Added download_status column');
+  }
+  if (!columnNames.includes('process_status')) {
+    db.exec(
+      `ALTER TABLE vods ADD COLUMN process_status TEXT DEFAULT 'pending'`
+    );
+    console.log('Added process_status column');
+  }
+  if (!columnNames.includes('download_progress')) {
+    db.exec(`ALTER TABLE vods ADD COLUMN download_progress INTEGER DEFAULT 0`);
+    console.log('Added download_progress column');
+  }
+  if (!columnNames.includes('error_message')) {
+    db.exec(`ALTER TABLE vods ADD COLUMN error_message TEXT`);
+    console.log('Added error_message column');
+  }
+  if (!columnNames.includes('retry_count')) {
+    db.exec(`ALTER TABLE vods ADD COLUMN retry_count INTEGER DEFAULT 0`);
+    console.log('Added retry_count column');
+  }
+  if (!columnNames.includes('last_attempt_at')) {
+    db.exec(`ALTER TABLE vods ADD COLUMN last_attempt_at TEXT`);
+    console.log('Added last_attempt_at column');
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS stream_state (
       id INTEGER PRIMARY KEY,

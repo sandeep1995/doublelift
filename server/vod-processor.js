@@ -21,6 +21,7 @@ async function getVodDownloadUrl(vodId) {
     headers: {
       'Client-ID': process.env.TWITCH_CLIENT_ID,
       Accept: 'application/vnd.twitchtv.v5+json',
+      Authorization: `Bearer ${token}`,
     },
   });
 
