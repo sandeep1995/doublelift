@@ -21,13 +21,19 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       title TEXT,
       url TEXT,
-      duration INTEGER,
+      duration TEXT,
       created_at TEXT,
       downloaded INTEGER DEFAULT 0,
       processed INTEGER DEFAULT 0,
+      download_status TEXT DEFAULT 'pending',
+      process_status TEXT DEFAULT 'pending',
+      download_progress INTEGER DEFAULT 0,
       muted_segments TEXT,
       file_path TEXT,
-      processed_file_path TEXT
+      processed_file_path TEXT,
+      error_message TEXT,
+      retry_count INTEGER DEFAULT 0,
+      last_attempt_at TEXT
     )
   `);
 

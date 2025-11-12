@@ -41,28 +41,46 @@ export async function downloadVod(vodId) {
     throw new Error(`VOD ${vodId} not found in database`);
   }
 
-  if (vod.downloaded) {
+  if (vod.downloaded && vod.file_path && existsSync(vod.file_path)) {
     console.log(`VOD ${vodId} already downloaded`);
+    db.prepare('UPDATE vods SET download_status = ? WHERE id = ?').run(
+      'completed',
+      vodId
+    );
     return vod.file_path;
   }
 
   broadcastStatus({ type: 'download_start', vodId, title: vod.title });
+
+  db.prepare(
+    'UPDATE vods SET download_status = ?, download_progress = 0, last_attempt_at = ? WHERE id = ?'
+  ).run('downloading', new Date().toISOString(), vodId);
 
   try {
     const m3u8Url = await getVodDownloadUrl(vodId);
     const outputPath = join(VOD_STORAGE, `${vodId}.mp4`);
 
     await new Promise((resolve, reject) => {
+      let lastPercent = 0;
+
       ffmpeg(m3u8Url)
         .outputOptions('-c copy')
         .output(outputPath)
         .on('progress', (progress) => {
           if (progress.percent) {
-            broadcastStatus({
-              type: 'download_progress',
-              vodId,
-              percent: Math.round(progress.percent),
-            });
+            const percent = Math.round(progress.percent);
+            if (percent !== lastPercent) {
+              lastPercent = percent;
+              db.prepare(
+                'UPDATE vods SET download_progress = ? WHERE id = ?'
+              ).run(percent, vodId);
+
+              broadcastStatus({
+                type: 'download_progress',
+                vodId,
+                percent,
+              });
+            }
           }
         })
         .on('end', () => {
@@ -77,12 +95,16 @@ export async function downloadVod(vodId) {
     });
 
     db.prepare(
-      'UPDATE vods SET downloaded = 1, file_path = ? WHERE id = ?'
-    ).run(outputPath, vodId);
+      'UPDATE vods SET downloaded = 1, download_status = ?, download_progress = 100, file_path = ?, error_message = NULL WHERE id = ?'
+    ).run('completed', outputPath, vodId);
 
-    broadcastStatus({ type: 'download_complete', vodId });
+    broadcastStatus({ type: 'download_complete', vodId, title: vod.title });
     return outputPath;
   } catch (error) {
+    db.prepare(
+      'UPDATE vods SET download_status = ?, error_message = ? WHERE id = ?'
+    ).run('failed', error.message, vodId);
+
     broadcastStatus({ type: 'download_error', vodId, error: error.message });
     throw error;
   }
@@ -104,12 +126,25 @@ export async function processVod(vodId) {
     throw new Error(`VOD ${vodId} not downloaded yet`);
   }
 
-  if (vod.processed) {
+  if (
+    vod.processed &&
+    vod.processed_file_path &&
+    existsSync(vod.processed_file_path)
+  ) {
     console.log(`VOD ${vodId} already processed`);
+    db.prepare('UPDATE vods SET process_status = ? WHERE id = ?').run(
+      'completed',
+      vodId
+    );
     return vod.processed_file_path;
   }
 
   broadcastStatus({ type: 'process_start', vodId, title: vod.title });
+
+  db.prepare('UPDATE vods SET process_status = ? WHERE id = ?').run(
+    'processing',
+    vodId
+  );
 
   try {
     const mutedSegments = JSON.parse(vod.muted_segments || '[]');
@@ -120,10 +155,10 @@ export async function processVod(vodId) {
       copyFileSync(vod.file_path, outputPath);
 
       db.prepare(
-        'UPDATE vods SET processed = 1, processed_file_path = ? WHERE id = ?'
-      ).run(outputPath, vodId);
+        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+      ).run('completed', outputPath, vodId);
 
-      broadcastStatus({ type: 'process_complete', vodId });
+      broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
       return outputPath;
     }
 
@@ -199,12 +234,16 @@ export async function processVod(vodId) {
     });
 
     db.prepare(
-      'UPDATE vods SET processed = 1, processed_file_path = ? WHERE id = ?'
-    ).run(outputPath, vodId);
+      'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+    ).run('completed', outputPath, vodId);
 
-    broadcastStatus({ type: 'process_complete', vodId });
+    broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
     return outputPath;
   } catch (error) {
+    db.prepare(
+      'UPDATE vods SET process_status = ?, error_message = ? WHERE id = ?'
+    ).run('failed', error.message, vodId);
+
     broadcastStatus({ type: 'process_error', vodId, error: error.message });
     throw error;
   }

@@ -30,7 +30,7 @@ echo "Starting services with Docker Compose..."
 docker-compose up -d
 
 echo ""
-echo "✅ Deployment complete!"
+echo "Deployment complete!"
 echo ""
 echo "The application is now running at http://localhost:3000"
 echo ""

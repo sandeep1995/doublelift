@@ -1,8 +1,6 @@
 import cron from 'node-cron';
 import { getDatabase } from './database.js';
 import { getChannelId, getRecentVods, getMutedSegments } from './twitch-api.js';
-import { downloadVod, processVod } from './vod-processor.js';
-import { updatePlaylist } from './playlist-manager.js';
 import { broadcastStatus } from './websocket.js';
 
 export function startScheduler() {
@@ -75,40 +73,9 @@ export async function scanAndProcessVods() {
       newVods: newVodsCount,
     });
 
-    if (newVodsCount > 0) {
-      await processNewVods();
-    }
+    console.log(`Scan complete: ${newVodsCount} new VODs added`);
   } catch (error) {
     console.error('Error during VOD scan:', error);
     broadcastStatus({ type: 'scan_error', error: error.message });
   }
-}
-
-async function processNewVods() {
-  const db = getDatabase();
-
-  const unprocessedVods = db
-    .prepare(
-      `
-    SELECT * FROM vods 
-    WHERE processed = 0 
-    ORDER BY created_at DESC
-  `
-    )
-    .all();
-
-  for (const vod of unprocessedVods) {
-    try {
-      console.log(`Processing VOD: ${vod.title}`);
-
-      await downloadVod(vod.id);
-      await processVod(vod.id);
-
-      console.log(`Successfully processed VOD: ${vod.title}`);
-    } catch (error) {
-      console.error(`Failed to process VOD ${vod.id}:`, error);
-    }
-  }
-
-  await updatePlaylist();
 }

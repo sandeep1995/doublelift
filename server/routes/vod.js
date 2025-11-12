@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDatabase } from '../database.js';
-import { downloadVod, processVod } from '../vod-processor.js';
+import { processVod } from '../vod-processor.js';
+import { downloadQueue } from '../download-queue.js';
 
 const router = express.Router();
 
@@ -8,6 +9,15 @@ router.get('/', (req, res) => {
   const db = getDatabase();
   const vods = db.prepare('SELECT * FROM vods ORDER BY created_at DESC').all();
   res.json(vods);
+});
+
+router.get('/queue/status', (req, res) => {
+  try {
+    const status = downloadQueue.getQueueStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get('/:id', (req, res) => {
@@ -23,8 +33,26 @@ router.get('/:id', (req, res) => {
 
 router.post('/:id/download', async (req, res) => {
   try {
-    const filePath = await downloadVod(req.params.id);
-    res.json({ success: true, filePath });
+    const result = await downloadQueue.addToQueue(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/retry', async (req, res) => {
+  try {
+    const result = await downloadQueue.retryFailed(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/cancel', async (req, res) => {
+  try {
+    const result = await downloadQueue.cancelDownload(req.params.id);
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

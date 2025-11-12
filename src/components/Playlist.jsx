@@ -38,7 +38,7 @@ function Playlist() {
   if (loading) {
     return (
       <div className='card'>
-        <h2>📋 Current Playlist</h2>
+        <h2>Current Playlist</h2>
         <p>Loading...</p>
       </div>
     );
@@ -46,7 +46,7 @@ function Playlist() {
 
   return (
     <div className='card playlist'>
-      <h2>📋 Current Playlist</h2>
+      <h2>Current Playlist</h2>
 
       {playlist.length > 0 && (
         <div className='playlist-summary'>

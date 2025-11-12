@@ -94,7 +94,7 @@ function App() {
     <div className='app'>
       <header className='header'>
         <div className='header-content'>
-          <h1>🎮 DoubleLift VOD Streamer</h1>
+          <h1>DoubleLift VOD Streamer</h1>
           <div className='header-subtitle'>
             Automated Twitch Rerun Channel Manager
           </div>

@@ -4,7 +4,7 @@ function Dashboard({ status }) {
   if (!status) {
     return (
       <div className='card'>
-        <h2>📊 Dashboard</h2>
+        <h2>Dashboard</h2>
         <p>Loading...</p>
       </div>
     );
@@ -12,7 +12,7 @@ function Dashboard({ status }) {
 
   return (
     <div className='card dashboard'>
-      <h2>📊 Dashboard</h2>
+      <h2>Dashboard</h2>
 
       <div className='stream-status'>
         <div className='status-label'>Stream Status</div>
@@ -21,7 +21,7 @@ function Dashboard({ status }) {
             status.isStreaming ? 'status-live' : 'status-offline'
           }`}
         >
-          {status.isStreaming ? '🔴 LIVE' : '⚫ OFFLINE'}
+          {status.isStreaming ? 'LIVE' : 'OFFLINE'}
         </span>
       </div>
 

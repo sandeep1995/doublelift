@@ -56,7 +56,7 @@ function StreamControls({ status, onUpdate }) {
 
   return (
     <div className='card stream-controls'>
-      <h2>🎬 Stream Controls</h2>
+      <h2>Stream Controls</h2>
 
       <div className='control-buttons'>
         <button
@@ -64,7 +64,7 @@ function StreamControls({ status, onUpdate }) {
           onClick={handleStartStream}
           disabled={loading || status?.isStreaming}
         >
-          ▶️ Start Stream
+          Start Stream
         </button>
 
         <button
@@ -72,7 +72,7 @@ function StreamControls({ status, onUpdate }) {
           onClick={handleStopStream}
           disabled={loading || !status?.isStreaming}
         >
-          ⏹️ Stop Stream
+          Stop Stream
         </button>
 
         <button
@@ -80,7 +80,7 @@ function StreamControls({ status, onUpdate }) {
           onClick={handleManualScan}
           disabled={loading}
         >
-          🔄 Manual Scan
+          Manual Scan
         </button>
       </div>
 
