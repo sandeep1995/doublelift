@@ -4,7 +4,7 @@ import { join } from 'path';
 import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
 import { getDatabase } from './database.js';
-import { getMutedSegments } from './twitch-api.js';
+import { getMutedSegments, getVodDetails } from './twitch-api.js';
 import { broadcastStatus } from './websocket.js';
 
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
@@ -15,22 +15,40 @@ if (!existsSync(PROCESSED_STORAGE))
   mkdirSync(PROCESSED_STORAGE, { recursive: true });
 
 async function getVodDownloadUrl(vodId) {
-  const token = await getAccessToken();
-
-  const response = await axios.get(`https://api.twitch.tv/v5/videos/${vodId}`, {
-    headers: {
-      'Client-ID': process.env.TWITCH_CLIENT_ID,
-      Accept: 'application/vnd.twitchtv.v5+json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const previewUrl = response.data.preview?.template;
-  if (!previewUrl) {
-    throw new Error('Could not find VOD preview URL');
+  /**
+   * Sample response from getVodDetails:
+   * {
+   *   id: '2609909937',
+   *   stream_id: '315570066648',
+   *   user_id: '40017619',
+   *   user_login: 'doublelift',
+   *   user_name: 'Doublelift',
+   *   title: '✅LAST STREAM BEFORE WORLDS + JAPAN TRIP, WILL BE BACK ON 11/16✅༼ ºل͜º ༽ºل͜º ༽ºل͜º ༽ ＥＶＥＲＹＯＮＥ，ＧＥＴ ＩＮ ＨＥＲＥ ༼ ºل͜º༼ ºل͜º༼ ºل͜º ༽✅',
+   *   description: '',
+   *   created_at: '2025-11-04T23:02:45Z',
+   *   published_at: '2025-11-04T23:02:45Z',
+   *   url: 'https://www.twitch.tv/videos/2609909937',
+   *   thumbnail_url: 'https://static-cdn.jtvnw.net/cf_vods/d2nvs31859zcd8/e48f6b7600222960fdc8_doublelift_315570066648_1762297359//thumb/thumb0-%{width}x%{height}.jpg',
+   *   viewable: 'public',
+   *   view_count: 70293,
+   *   language: 'en',
+   *   type: 'archive',
+   *   duration: '4h43m17s',
+   *   muted_segments: null
+   * }
+   */
+  const vodDetails = await getVodDetails(vodId);
+  
+  if (!vodDetails) {
+    throw new Error(`VOD ${vodId} not found`);
   }
 
-  const baseUrl = previewUrl.split('/storyboards/')[0];
+  const thumbnailUrl = vodDetails.thumbnail_url;
+  if (!thumbnailUrl) {
+    throw new Error('Could not find VOD thumbnail URL');
+  }
+
+  const baseUrl = thumbnailUrl.split('/thumb/')[0];
   return `${baseUrl}/chunked/index-dvr.m3u8`;
 }
 
@@ -250,14 +268,3 @@ export async function processVod(vodId) {
   }
 }
 
-async function getAccessToken() {
-  const axios = (await import('axios')).default;
-  const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
-    params: {
-      client_id: process.env.TWITCH_CLIENT_ID,
-      client_secret: process.env.TWITCH_CLIENT_SECRET,
-      grant_type: 'client_credentials',
-    },
-  });
-  return response.data.access_token;
-}

@@ -36,9 +36,9 @@ router.get('/', (req, res) => {
 });
 
 router.post('/scan', async (req, res) => {
-  scanAndProcessVods()
+  scanAndProcessVods({ clearHistory: true })
     .then(() => {
-      res.json({ success: true, message: 'Scan started' });
+      res.json({ success: true, message: 'Scan started with history cleared' });
     })
     .catch((error) => {
       res.status(500).json({ error: error.message });

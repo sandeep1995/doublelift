@@ -111,19 +111,12 @@ export async function getVodDetails(vodId) {
 
 export async function getMutedSegments(vodId) {
   try {
-    const token = await getAccessToken();
-    const response = await axios.get(
-      `https://api.twitch.tv/v5/videos/${vodId}`,
-      {
-        headers: {
-          'Client-ID': process.env.TWITCH_CLIENT_ID,
-          Authorization: `OAuth ${token}`,
-          Accept: 'application/vnd.twitchtv.v5+json',
-        },
-      }
-    );
-
-    return response.data.muted_segments || [];
+    const vodDetails = await getVodDetails(vodId);
+    if (!vodDetails) {
+      return [];
+    }
+    // muted_segments can be null or an array
+    return vodDetails.muted_segments || [];
   } catch (error) {
     console.error(
       `Failed to get muted segments for VOD ${vodId}:`,

@@ -19,11 +19,22 @@ export function startScheduler() {
   }, 5000);
 }
 
-export async function scanAndProcessVods() {
+export async function scanAndProcessVods(options = {}) {
   const db = getDatabase();
+  const { clearHistory = false } = options;
 
   try {
     broadcastStatus({ type: 'scan_start' });
+
+    if (clearHistory) {
+      console.log('Clearing previous VOD history...');
+      db.prepare('DELETE FROM vods').run();
+      db.prepare('DELETE FROM playlist').run();
+      db.prepare(
+        'UPDATE stream_state SET current_vod_id = NULL WHERE id = 1'
+      ).run();
+      broadcastStatus({ type: 'history_cleared' });
+    }
 
     const channelId =
       process.env.TWITCH_CHANNEL_ID ||
