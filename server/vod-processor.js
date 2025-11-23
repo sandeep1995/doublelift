@@ -5,7 +5,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { getDatabase } from './database.js';
 import { getMutedSegments } from './twitch-api.js';
 import { broadcastStatus } from './websocket.js';
-
+import readline from 'readline';
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
 const PROCESSED_STORAGE = process.env.PROCESSED_STORAGE_PATH || './processed';
 const CACHE_DIR =
@@ -229,7 +229,6 @@ export async function downloadVod(vodId) {
           reject(err);
         }
       });
-
     });
 
     await downloadPromise;
@@ -287,103 +286,154 @@ function parseDuration(duration) {
 async function detectMutedSegmentsWithFfmpeg(
   videoPath,
   videoDuration = null,
-  progressCallback = null
+  progressCallback = null,
+  opts = {} // optional, backward compatible
 ) {
-  console.log(
-    `[Mute Detection] Starting ffmpeg mute detection for: ${videoPath}`
-  );
-  if (videoDuration) {
-    console.log(`[Mute Detection] Video duration: ${videoDuration}s`);
+  const {
+    noiseDb = -25,
+    minSilence = 3,
+    minSegment = 3,
+    mergeGap = 0.25,
+    log = true,
+  } = opts;
+
+  const logIt = (...args) => log && console.log(...args);
+
+  logIt(`[Mute Detection] Starting ffmpeg mute detection for: ${videoPath}`);
+  if (videoDuration)
+    logIt(`[Mute Detection] Video duration (given): ${videoDuration}s`);
+
+  // Probe duration once if not provided
+  const probeDuration = () =>
+    new Promise((resolve) => {
+      const p = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        videoPath,
+      ]);
+      let out = '';
+      p.stdout.on('data', (d) => (out += d.toString()));
+      p.on('close', () => {
+        const dur = Number(out.trim());
+        resolve(Number.isFinite(dur) ? dur : null);
+      });
+      p.on('error', () => resolve(null));
+    });
+
+  let detectedDuration = videoDuration ?? (await probeDuration());
+  if (detectedDuration) {
+    logIt(
+      `[Mute Detection] Detected duration: ${detectedDuration.toFixed(3)}s`
+    );
   }
+
+  const mergeSegments = (segments) => {
+    if (!segments.length) return [];
+    const sorted = [...segments].sort((a, b) => a.offset - b.offset);
+    const out = [sorted[0]];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = out[out.length - 1];
+      const cur = sorted[i];
+      const prevEnd = prev.offset + prev.duration;
+
+      if (cur.offset - prevEnd <= mergeGap) {
+        const newEnd = Math.max(prevEnd, cur.offset + cur.duration);
+        prev.duration = newEnd - prev.offset;
+      } else {
+        out.push(cur);
+      }
+    }
+    return out;
+  };
 
   return new Promise((resolve, reject) => {
     let output = '';
     let errorOutput = '';
     const mutedSegments = [];
     let currentSilenceStart = null;
-    let detectedDuration = null;
 
     const ffmpegProcess = spawn('ffmpeg', [
+      '-hide_banner',
+      '-nostdin',
+      '-vn', // skip video decode for speed
       '-i',
       videoPath,
       '-af',
-      'silencedetect=noise=-30dB:duration=0.5',
+      `silencedetect=noise=${noiseDb}dB:duration=${minSilence}`,
       '-f',
       'null',
       '-',
     ]);
 
-    ffmpegProcess.stderr.on('data', (data) => {
-      const dataStr = data.toString();
-      errorOutput += dataStr;
-      output += dataStr;
+    const rl = readline.createInterface({ input: ffmpegProcess.stderr });
 
-      // Parse video duration from ffmpeg output
-      // Format: Duration: 01:23:45.67
+    rl.on('line', (line) => {
+      output += line + '\n';
+      errorOutput += line + '\n';
+
+      // fallback duration parse if ffprobe failed
       if (!detectedDuration) {
-        const durationMatch = dataStr.match(
-          /Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})/
-        );
-        if (durationMatch) {
-          const hours = parseInt(durationMatch[1]);
-          const minutes = parseInt(durationMatch[2]);
-          const seconds = parseInt(durationMatch[3]);
-          const centiseconds = parseInt(durationMatch[4]);
-          detectedDuration =
-            hours * 3600 + minutes * 60 + seconds + centiseconds / 100;
-          console.log(
-            `[Mute Detection] Detected video duration: ${detectedDuration}s`
+        const dm = line.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+        if (dm) {
+          const h = parseInt(dm[1], 10);
+          const m = parseInt(dm[2], 10);
+          const s = parseInt(dm[3], 10);
+          const cs = parseInt(dm[4], 10);
+          detectedDuration = h * 3600 + m * 60 + s + cs / 100;
+          logIt(
+            `[Mute Detection] Duration from ffmpeg: ${detectedDuration.toFixed(
+              3
+            )}s`
           );
-          if (progressCallback) {
-            progressCallback({
-              stage: 'detecting',
-              detectedDuration,
-              segmentsFound: mutedSegments.length,
-            });
-          }
+          progressCallback?.({
+            stage: 'detecting',
+            detectedDuration,
+            segmentsFound: mutedSegments.length,
+          });
         }
       }
 
-      // Parse silencedetect output
-      // Format: [silencedetect @ 0x...] silence_start: 10.5
-      //         [silencedetect @ 0x...] silence_end: 15.2 | silence_duration: 4.7
-      const silenceStartMatch = dataStr.match(/silence_start:\s*([\d.]+)/);
-      const silenceEndMatch = dataStr.match(/silence_end:\s*([\d.]+)/);
+      // multiple events per line -> use global regex loops
+      const startRe = /silence_start:\s*([\d.]+)/g;
+      const endRe = /silence_end:\s*([\d.]+)/g;
 
-      if (silenceStartMatch) {
-        currentSilenceStart = parseFloat(silenceStartMatch[1]);
-        console.log(
-          `[Mute Detection] Silence detected starting at ${currentSilenceStart.toFixed(
-            2
-          )}s`
+      let match;
+
+      while ((match = startRe.exec(line))) {
+        currentSilenceStart = parseFloat(match[1]);
+        logIt(
+          `[Mute Detection] Silence start at ${currentSilenceStart.toFixed(3)}s`
         );
       }
 
-      if (silenceEndMatch && currentSilenceStart !== null) {
-        const silenceEnd = parseFloat(silenceEndMatch[1]);
+      while ((match = endRe.exec(line))) {
+        const silenceEnd = parseFloat(match[1]);
+        if (currentSilenceStart == null) continue;
+
         const duration = silenceEnd - currentSilenceStart;
+        if (duration >= minSegment) {
+          mutedSegments.push({
+            offset: currentSilenceStart,
+            duration,
+          });
 
-        mutedSegments.push({
-          offset: currentSilenceStart,
-          duration: duration,
-        });
+          logIt(
+            `[Mute Detection] Silence segment: ${currentSilenceStart.toFixed(
+              3
+            )}s - ${silenceEnd.toFixed(3)}s (dur ${duration.toFixed(3)}s)`
+          );
 
-        console.log(
-          `[Mute Detection] Silence segment found: ${currentSilenceStart.toFixed(
-            2
-          )}s - ${silenceEnd.toFixed(2)}s (duration: ${duration.toFixed(2)}s)`
-        );
-        console.log(
-          `[Mute Detection] Total muted segments so far: ${mutedSegments.length}`
-        );
-
-        if (progressCallback) {
-          progressCallback({
+          progressCallback?.({
             stage: 'detecting',
             segmentsFound: mutedSegments.length,
             latestSegment: {
               offset: currentSilenceStart,
-              duration: duration,
+              duration,
               end: silenceEnd,
             },
           });
@@ -394,50 +444,55 @@ async function detectMutedSegmentsWithFfmpeg(
     });
 
     ffmpegProcess.on('close', (code) => {
-      // ffmpeg exits with code 1 when using -f null, which is normal
+      rl.close();
+
+      // ffmpeg exits with 1 when using -f null, which is normal
       if (code === 0 || code === 1) {
-        // Handle unclosed silence (silence that continues to end of video)
-        if (currentSilenceStart !== null) {
-          const finalDuration = videoDuration || detectedDuration;
-          if (finalDuration) {
+        // handle silence continuing to end
+        if (currentSilenceStart != null) {
+          const finalDuration = detectedDuration;
+          if (finalDuration != null) {
             const duration = finalDuration - currentSilenceStart;
-            mutedSegments.push({
-              offset: currentSilenceStart,
-              duration: duration,
-            });
-            console.log(
-              `[Mute Detection] Final silence segment (to end): ${currentSilenceStart.toFixed(
-                2
-              )}s - ${finalDuration.toFixed(2)}s (duration: ${duration.toFixed(
-                2
-              )}s)`
-            );
+            if (duration >= minSegment) {
+              mutedSegments.push({
+                offset: currentSilenceStart,
+                duration,
+              });
+              logIt(
+                `[Mute Detection] Final silence: ${currentSilenceStart.toFixed(
+                  3
+                )}s - ${finalDuration.toFixed(3)}s (dur ${duration.toFixed(
+                  3
+                )}s)`
+              );
+            }
           }
         }
-        console.log(
-          `[Mute Detection] Detection complete. Found ${mutedSegments.length} muted segment(s)`
+
+        const merged = mergeSegments(mutedSegments);
+
+        logIt(
+          `[Mute Detection] Detection complete. Found ${merged.length} muted segment(s)`
         );
-        if (mutedSegments.length > 0) {
-          console.log(
+        if (merged.length) {
+          logIt(
             `[Mute Detection] Muted segments:`,
-            JSON.stringify(mutedSegments, null, 2)
+            JSON.stringify(merged, null, 2)
           );
         }
-        if (progressCallback) {
-          progressCallback({
-            stage: 'complete',
-            segmentsFound: mutedSegments.length,
-            totalSegments: mutedSegments.length,
-          });
-        }
-        resolve(mutedSegments);
+
+        progressCallback?.({
+          stage: 'complete',
+          segmentsFound: merged.length,
+          totalSegments: merged.length,
+        });
+
+        resolve(merged);
       } else {
         console.error(`[Mute Detection] Failed with exit code ${code}`);
-        console.error(`[Mute Detection] Output: ${output}`);
-        console.error(`[Mute Detection] Error: ${errorOutput}`);
         reject(
           new Error(
-            `ffmpeg silencedetect failed with code ${code}. Output: ${output}\nError: ${errorOutput}`
+            `ffmpeg silencedetect failed with code ${code}.\nOutput:\n${output}\nError:\n${errorOutput}`
           )
         );
       }
@@ -446,7 +501,7 @@ async function detectMutedSegmentsWithFfmpeg(
     ffmpegProcess.on('error', (err) => {
       console.error(`[Mute Detection] Process error:`, err);
       if (err.code === 'ENOENT') {
-        reject(new Error('ffmpeg not found. Please install ffmpeg.'));
+        reject(new Error('ffmpeg/ffprobe not found. Please install ffmpeg.'));
       } else {
         reject(err);
       }
