@@ -42,7 +42,12 @@ function App() {
       addLog(formatLogMessage(data));
 
       if (
-        ['stream_start', 'stream_stop', 'scan_complete'].includes(data.type)
+        [
+          'stream_start',
+          'stream_stop',
+          'scan_complete',
+          'playlist_updated',
+        ].includes(data.type)
       ) {
         fetchStatus();
       }
@@ -88,7 +93,9 @@ function App() {
         if (data.eta) {
           parts.push(`ETA ${data.eta}`);
         }
-        return parts.length > 0 ? parts.join(' ') : (data.logLine || `Downloading ${data.percent || 0}%`);
+        return parts.length > 0
+          ? parts.join(' ')
+          : data.logLine || `Downloading ${data.percent || 0}%`;
       case 'download_complete':
         return `Download complete: ${data.vodId}`;
       case 'process_start':

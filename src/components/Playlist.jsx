@@ -4,9 +4,25 @@ import './Playlist.css';
 function Playlist() {
   const [playlist, setPlaylist] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     fetchPlaylist();
+    const interval = setInterval(fetchPlaylist, 3000);
+
+    // Listen for playlist updates via WebSocket
+    const websocket = new WebSocket(`ws://${window.location.hostname}:3000`);
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'playlist_updated') {
+        fetchPlaylist();
+      }
+    };
+
+    return () => {
+      clearInterval(interval);
+      websocket.close();
+    };
   }, []);
 
   const fetchPlaylist = async () => {
@@ -18,6 +34,27 @@ function Playlist() {
       console.error('Failed to fetch playlist:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdatePlaylist = async () => {
+    setUpdating(true);
+    try {
+      const response = await fetch('/api/stream/playlist/update', {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await fetchPlaylist();
+        alert('Playlist updated! All processed VODs have been added.');
+      } else {
+        alert('Failed to update playlist: ' + (result.error || result.message));
+      }
+    } catch (error) {
+      console.error('Failed to update playlist:', error);
+      alert('Failed to update playlist: ' + error.message);
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -46,7 +83,16 @@ function Playlist() {
 
   return (
     <div className='card playlist'>
-      <h2>Current Playlist</h2>
+      <div className='playlist-header'>
+        <h2>Current Playlist</h2>
+        <button
+          className='action-btn btn-primary'
+          onClick={handleUpdatePlaylist}
+          disabled={updating}
+        >
+          {updating ? 'Updating...' : '🔄 Update Playlist'}
+        </button>
+      </div>
 
       {playlist.length > 0 && (
         <div className='playlist-summary'>

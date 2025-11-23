@@ -89,3 +89,108 @@ export function getPlaylist() {
 
   return playlist;
 }
+
+export function isVodInPlaylist(vodId) {
+  const db = getDatabase();
+  const result = db
+    .prepare('SELECT COUNT(*) as count FROM playlist WHERE vod_id = ?')
+    .get(vodId);
+  return result.count > 0;
+}
+
+export async function addVodToPlaylist(vodId) {
+  const db = getDatabase();
+  const vod = db.prepare('SELECT * FROM vods WHERE id = ?').get(vodId);
+
+  if (!vod) {
+    throw new Error(`VOD ${vodId} not found`);
+  }
+
+  if (!vod.processed) {
+    throw new Error(`VOD ${vodId} is not processed yet`);
+  }
+
+  if (isVodInPlaylist(vodId)) {
+    return { success: true, message: 'VOD already in playlist' };
+  }
+
+  // Get the current max position
+  const maxPosition = db
+    .prepare('SELECT MAX(position) as max FROM playlist')
+    .get();
+
+  const nextPosition = (maxPosition?.max ?? -1) + 1;
+
+  // Check total duration
+  const TARGET_DURATION = 48 * 3600;
+  const currentPlaylist = getPlaylist();
+  let totalDuration = 0;
+
+  for (const item of currentPlaylist) {
+    totalDuration += parseDuration(item.duration);
+  }
+
+  const vodDuration = parseDuration(vod.duration);
+
+  if (totalDuration + vodDuration > TARGET_DURATION) {
+    throw new Error(
+      `Adding this VOD would exceed 48-hour limit. Current: ${Math.round(
+        totalDuration / 3600
+      )}h, Adding: ${Math.round(vodDuration / 3600)}h`
+    );
+  }
+
+  db.prepare(
+    `
+    INSERT INTO playlist (vod_id, position, added_at)
+    VALUES (?, ?, ?)
+  `
+  ).run(vodId, nextPosition, new Date().toISOString());
+
+  db.prepare(
+    'UPDATE stream_state SET playlist_updated_at = ? WHERE id = 1'
+  ).run(new Date().toISOString());
+
+  broadcastStatus({
+    type: 'playlist_updated',
+    vodCount: currentPlaylist.length + 1,
+    totalHours: Math.round((totalDuration + vodDuration) / 3600),
+  });
+
+  return { success: true, message: 'VOD added to playlist' };
+}
+
+export function removeVodFromPlaylist(vodId) {
+  const db = getDatabase();
+
+  if (!isVodInPlaylist(vodId)) {
+    return { success: true, message: 'VOD not in playlist' };
+  }
+
+  const removed = db
+    .prepare('DELETE FROM playlist WHERE vod_id = ?')
+    .run(vodId);
+
+  // Reorder positions
+  const remaining = db
+    .prepare('SELECT * FROM playlist ORDER BY position')
+    .all();
+
+  remaining.forEach((item, index) => {
+    db.prepare('UPDATE playlist SET position = ? WHERE vod_id = ?').run(
+      index,
+      item.vod_id
+    );
+  });
+
+  db.prepare(
+    'UPDATE stream_state SET playlist_updated_at = ? WHERE id = 1'
+  ).run(new Date().toISOString());
+
+  broadcastStatus({
+    type: 'playlist_updated',
+    vodCount: remaining.length,
+  });
+
+  return { success: true, message: 'VOD removed from playlist' };
+}

@@ -7,16 +7,30 @@ function VodList() {
   const [actionInProgress, setActionInProgress] = useState({});
   const [downloadProgress, setDownloadProgress] = useState({});
   const [queueStatus, setQueueStatus] = useState(null);
+  const [playlistVodIds, setPlaylistVodIds] = useState(new Set());
 
   useEffect(() => {
     fetchVods();
     fetchQueueStatus();
+    fetchPlaylistVodIds();
     const interval = setInterval(() => {
       fetchVods();
       fetchQueueStatus();
+      fetchPlaylistVodIds();
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const fetchPlaylistVodIds = async () => {
+    try {
+      const response = await fetch('/api/stream/playlist');
+      const data = await response.json();
+      const ids = new Set(data.map((item) => item.vod_id));
+      setPlaylistVodIds(ids);
+    } catch (error) {
+      console.error('Failed to fetch playlist:', error);
+    }
+  };
 
   const fetchQueueStatus = async () => {
     try {
@@ -133,6 +147,58 @@ function VodList() {
     }
   };
 
+  const handleAddToPlaylist = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'adding' }));
+    try {
+      const response = await fetch(`/api/stream/playlist/${vodId}/add`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await fetchPlaylistVodIds();
+        await fetchVods();
+      } else {
+        alert('Failed to add to playlist: ' + (result.error || result.message));
+      }
+    } catch (error) {
+      console.error('Failed to add to playlist:', error);
+      alert('Failed to add to playlist: ' + error.message);
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
+  const handleRemoveFromPlaylist = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'removing' }));
+    try {
+      const response = await fetch(`/api/stream/playlist/${vodId}/remove`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await fetchPlaylistVodIds();
+        await fetchVods();
+      } else {
+        alert(
+          'Failed to remove from playlist: ' + (result.error || result.message)
+        );
+      }
+    } catch (error) {
+      console.error('Failed to remove from playlist:', error);
+      alert('Failed to remove from playlist: ' + error.message);
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
   const handleProcess = async (vodId) => {
     setActionInProgress((prev) => ({ ...prev, [vodId]: 'processing' }));
     try {
@@ -174,11 +240,7 @@ function VodList() {
       case 'downloading': {
         const progress = downloadProgress[vod.id];
         const percent = progress?.percent ?? vod.download_progress ?? 0;
-        return (
-          <span className='badge badge-info'>
-            Downloading {percent}%
-          </span>
-        );
+        return <span className='badge badge-info'>Downloading {percent}%</span>;
       }
       case 'queued':
         return <span className='badge badge-warning'>Queued</span>;
@@ -222,11 +284,7 @@ function VodList() {
       return null;
     }
 
-    return (
-      <div className='vod-progress-details'>
-        {parts.join(' ')}
-      </div>
-    );
+    return <div className='vod-progress-details'>{parts.join(' ')}</div>;
   };
 
   const getProcessStatusBadge = (vod) => {
@@ -292,6 +350,35 @@ function VodList() {
           {inProgress === 'processing' ? 'Processing...' : '⚙ Process'}
         </button>
       );
+    }
+
+    if (vod.processed && status === 'completed') {
+      const inPlaylist = playlistVodIds.has(vod.id);
+      if (inPlaylist) {
+        actions.push(
+          <button
+            key='remove-playlist'
+            className='action-btn btn-warning'
+            onClick={() => handleRemoveFromPlaylist(vod.id)}
+            disabled={!!inProgress}
+          >
+            {inProgress === 'removing'
+              ? 'Removing...'
+              : '➖ Remove from Playlist'}
+          </button>
+        );
+      } else {
+        actions.push(
+          <button
+            key='add-playlist'
+            className='action-btn btn-success'
+            onClick={() => handleAddToPlaylist(vod.id)}
+            disabled={!!inProgress}
+          >
+            {inProgress === 'adding' ? 'Adding...' : '➕ Add to Playlist'}
+          </button>
+        );
+      }
     }
 
     return actions.length > 0 ? (

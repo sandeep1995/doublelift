@@ -5,6 +5,17 @@
   flex-direction: column;
 }
 
+.playlist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.playlist-header h2 {
+  margin: 0;
+}
+
 .playlist-summary {
   background: #1f1f23;
   padding: 1rem;
