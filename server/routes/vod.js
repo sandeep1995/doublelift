@@ -67,6 +67,29 @@ router.post('/:id/process', async (req, res) => {
   }
 });
 
+router.post('/:id/reprocess', async (req, res) => {
+  try {
+    const db = getDatabase();
+    const vod = db
+      .prepare('SELECT * FROM vods WHERE id = ?')
+      .get(req.params.id);
+
+    if (!vod || !vod.downloaded) {
+      return res.status(400).json({ error: 'VOD not downloaded yet' });
+    }
+
+    // Clear processed status to allow reprocessing
+    db.prepare(
+      'UPDATE vods SET processed = 0, process_status = ?, processed_file_path = NULL WHERE id = ?'
+    ).run('pending', req.params.id);
+
+    const filePath = await processVod(req.params.id);
+    res.json({ success: true, filePath });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/queue/restart', async (req, res) => {
   try {
     const result = await downloadQueue.restartQueue();

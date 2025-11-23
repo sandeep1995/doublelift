@@ -6,6 +6,7 @@ function VodList() {
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState({});
   const [downloadProgress, setDownloadProgress] = useState({});
+  const [processProgress, setProcessProgress] = useState({});
   const [queueStatus, setQueueStatus] = useState(null);
   const [playlistVodIds, setPlaylistVodIds] = useState(new Set());
 
@@ -60,6 +61,42 @@ function VodList() {
             logLine: data.logLine,
           },
         }));
+      }
+      if (data.type === 'process_start' && data.vodId) {
+        setProcessProgress((prev) => ({
+          ...prev,
+          [data.vodId]: {
+            message: 'Starting processing...',
+            stage: 'starting',
+          },
+        }));
+      }
+      if (data.type === 'process_progress' && data.vodId) {
+        setProcessProgress((prev) => ({
+          ...prev,
+          [data.vodId]: {
+            message: data.message,
+            stage: data.stage,
+            segmentsFound: data.segmentsFound,
+            latestSegment: data.latestSegment,
+            segment: data.segment,
+            total: data.total,
+          },
+        }));
+      }
+      if (data.type === 'process_complete' && data.vodId) {
+        setProcessProgress((prev) => {
+          const newState = { ...prev };
+          delete newState[data.vodId];
+          return newState;
+        });
+      }
+      if (data.type === 'process_error' && data.vodId) {
+        setProcessProgress((prev) => {
+          const newState = { ...prev };
+          delete newState[data.vodId];
+          return newState;
+        });
       }
     };
 
@@ -221,6 +258,30 @@ function VodList() {
     }
   };
 
+  const handleReprocess = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'reprocessing' }));
+    try {
+      const response = await fetch(`/api/vods/${vodId}/reprocess`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await fetchVods();
+      } else {
+        alert('Failed to reprocess VOD: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Failed to reprocess VOD:', error);
+      alert('Failed to reprocess VOD: ' + error.message);
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -285,6 +346,75 @@ function VodList() {
     }
 
     return <div className='vod-progress-details'>{parts.join(' ')}</div>;
+  };
+
+  const getProcessProgressDetails = (vod) => {
+    if (vod.process_status !== 'processing') {
+      return null;
+    }
+
+    const progress = processProgress[vod.id];
+    if (!progress) {
+      // Show default processing message if no progress data yet
+      return (
+        <div className='vod-progress-details'>
+          <span className='process-stage'>⚙ Processing...</span>
+        </div>
+      );
+    }
+
+    if (progress.stage === 'mute_detection') {
+      return (
+        <div className='vod-progress-details'>
+          <span className='process-stage'>🔍 Mute Detection:</span>{' '}
+          {progress.message}
+          {progress.segmentsFound > 0 && (
+            <span className='segments-count'>
+              {' '}
+              ({progress.segmentsFound} segment
+              {progress.segmentsFound !== 1 ? 's' : ''} found)
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    if (progress.stage === 'extracting_segments') {
+      const segmentInfo =
+        progress.segment && progress.total
+          ? ` (${progress.segment}/${progress.total})`
+          : '';
+      return (
+        <div className='vod-progress-details'>
+          <span className='process-stage'>✂ Extracting Segments:</span>{' '}
+          {progress.message || `Extracting segments${segmentInfo}...`}
+        </div>
+      );
+    }
+
+    if (progress.stage === 'concatenating') {
+      return (
+        <div className='vod-progress-details'>
+          <span className='process-stage'>🔗 Concatenating:</span>{' '}
+          {progress.message || 'Merging segments into final video...'}
+        </div>
+      );
+    }
+
+    if (progress.message) {
+      return (
+        <div className='vod-progress-details'>
+          <span className='process-stage'>⚙ Processing:</span>{' '}
+          {progress.message}
+        </div>
+      );
+    }
+
+    return (
+      <div className='vod-progress-details'>
+        <span className='process-stage'>⚙ Processing...</span>
+      </div>
+    );
   };
 
   const getProcessStatusBadge = (vod) => {
@@ -353,6 +483,18 @@ function VodList() {
     }
 
     if (vod.processed && status === 'completed') {
+      actions.push(
+        <button
+          key='reprocess'
+          className='action-btn btn-info'
+          onClick={() => handleReprocess(vod.id)}
+          disabled={!!inProgress}
+          title='Reprocess video to re-detect muted segments'
+        >
+          {inProgress === 'reprocessing' ? 'Reprocessing...' : '🔄 Reprocess'}
+        </button>
+      );
+
       const inPlaylist = playlistVodIds.has(vod.id);
       if (inPlaylist) {
         actions.push(
@@ -434,6 +576,7 @@ function VodList() {
                 </div>
               </div>
               {getDownloadProgressDetails(vod)}
+              {getProcessProgressDetails(vod)}
               {vod.error_message && (
                 <div className='vod-error'>
                   Error: {vod.error_message}

@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import ffmpeg from 'fluent-ffmpeg';
 import { getDatabase } from './database.js';
 import { getMutedSegments } from './twitch-api.js';
@@ -8,7 +8,8 @@ import { broadcastStatus } from './websocket.js';
 
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
 const PROCESSED_STORAGE = process.env.PROCESSED_STORAGE_PATH || './processed';
-const CACHE_DIR = process.env.TWITCH_DL_CACHE_DIR || join(VOD_STORAGE, '.cache');
+const CACHE_DIR =
+  process.env.TWITCH_DL_CACHE_DIR || join(VOD_STORAGE, '.cache');
 const DOWNLOAD_QUALITY = process.env.DOWNLOAD_QUALITY || 'source';
 const DOWNLOAD_FORMAT = process.env.DOWNLOAD_FORMAT || 'mp4';
 const DOWNLOAD_RATE_LIMIT = process.env.DOWNLOAD_RATE_LIMIT || null;
@@ -18,7 +19,6 @@ if (!existsSync(VOD_STORAGE)) mkdirSync(VOD_STORAGE, { recursive: true });
 if (!existsSync(PROCESSED_STORAGE))
   mkdirSync(PROCESSED_STORAGE, { recursive: true });
 if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
-
 
 export async function downloadVod(vodId) {
   const db = getDatabase();
@@ -136,9 +136,10 @@ export async function downloadVod(vodId) {
         // Update if we have new percentage
         if (progress.percent !== null && progress.percent !== lastPercent) {
           lastPercent = progress.percent;
-          db.prepare(
-            'UPDATE vods SET download_progress = ? WHERE id = ?'
-          ).run(progress.percent, vodId);
+          db.prepare('UPDATE vods SET download_progress = ? WHERE id = ?').run(
+            progress.percent,
+            vodId
+          );
         }
 
         // Broadcast detailed progress (throttle to once per second)
@@ -216,7 +217,11 @@ export async function downloadVod(vodId) {
       // Fallback: try to find any file with the VOD ID
       const files = readdirSync(VOD_STORAGE);
       const downloadedFile = files.find(
-        (file) => file.includes(vodId) && (file.endsWith(`.${DOWNLOAD_FORMAT}`) || file.endsWith('.mp4') || file.endsWith('.ts'))
+        (file) =>
+          file.includes(vodId) &&
+          (file.endsWith(`.${DOWNLOAD_FORMAT}`) ||
+            file.endsWith('.mp4') ||
+            file.endsWith('.ts'))
       );
 
       if (downloadedFile) {
@@ -226,7 +231,9 @@ export async function downloadVod(vodId) {
         console.log(`Renamed ${downloadedFile} to ${outputFilename}`);
       } else {
         throw new Error(
-          `Downloaded file not found at ${outputPath}. Files in directory: ${files.join(', ')}`
+          `Downloaded file not found at ${outputPath}. Files in directory: ${files.join(
+            ', '
+          )}`
         );
       }
     }
@@ -253,6 +260,176 @@ function parseDuration(duration) {
   const minutes = parseInt(match[2] || 0);
   const seconds = parseInt(match[3] || 0);
   return hours * 3600 + minutes * 60 + seconds;
+}
+
+async function detectMutedSegmentsWithFfmpeg(
+  videoPath,
+  videoDuration = null,
+  progressCallback = null
+) {
+  console.log(
+    `[Mute Detection] Starting ffmpeg mute detection for: ${videoPath}`
+  );
+  if (videoDuration) {
+    console.log(`[Mute Detection] Video duration: ${videoDuration}s`);
+  }
+
+  return new Promise((resolve, reject) => {
+    let output = '';
+    let errorOutput = '';
+    const mutedSegments = [];
+    let currentSilenceStart = null;
+    let detectedDuration = null;
+
+    const ffmpegProcess = spawn('ffmpeg', [
+      '-i',
+      videoPath,
+      '-af',
+      'silencedetect=noise=-30dB:duration=0.5',
+      '-f',
+      'null',
+      '-',
+    ]);
+
+    ffmpegProcess.stderr.on('data', (data) => {
+      const dataStr = data.toString();
+      errorOutput += dataStr;
+      output += dataStr;
+
+      // Parse video duration from ffmpeg output
+      // Format: Duration: 01:23:45.67
+      if (!detectedDuration) {
+        const durationMatch = dataStr.match(
+          /Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})/
+        );
+        if (durationMatch) {
+          const hours = parseInt(durationMatch[1]);
+          const minutes = parseInt(durationMatch[2]);
+          const seconds = parseInt(durationMatch[3]);
+          const centiseconds = parseInt(durationMatch[4]);
+          detectedDuration =
+            hours * 3600 + minutes * 60 + seconds + centiseconds / 100;
+          console.log(
+            `[Mute Detection] Detected video duration: ${detectedDuration}s`
+          );
+          if (progressCallback) {
+            progressCallback({
+              stage: 'detecting',
+              detectedDuration,
+              segmentsFound: mutedSegments.length,
+            });
+          }
+        }
+      }
+
+      // Parse silencedetect output
+      // Format: [silencedetect @ 0x...] silence_start: 10.5
+      //         [silencedetect @ 0x...] silence_end: 15.2 | silence_duration: 4.7
+      const silenceStartMatch = dataStr.match(/silence_start:\s*([\d.]+)/);
+      const silenceEndMatch = dataStr.match(/silence_end:\s*([\d.]+)/);
+
+      if (silenceStartMatch) {
+        currentSilenceStart = parseFloat(silenceStartMatch[1]);
+        console.log(
+          `[Mute Detection] Silence detected starting at ${currentSilenceStart.toFixed(
+            2
+          )}s`
+        );
+      }
+
+      if (silenceEndMatch && currentSilenceStart !== null) {
+        const silenceEnd = parseFloat(silenceEndMatch[1]);
+        const duration = silenceEnd - currentSilenceStart;
+
+        mutedSegments.push({
+          offset: currentSilenceStart,
+          duration: duration,
+        });
+
+        console.log(
+          `[Mute Detection] Silence segment found: ${currentSilenceStart.toFixed(
+            2
+          )}s - ${silenceEnd.toFixed(2)}s (duration: ${duration.toFixed(2)}s)`
+        );
+        console.log(
+          `[Mute Detection] Total muted segments so far: ${mutedSegments.length}`
+        );
+
+        if (progressCallback) {
+          progressCallback({
+            stage: 'detecting',
+            segmentsFound: mutedSegments.length,
+            latestSegment: {
+              offset: currentSilenceStart,
+              duration: duration,
+              end: silenceEnd,
+            },
+          });
+        }
+
+        currentSilenceStart = null;
+      }
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      // ffmpeg exits with code 1 when using -f null, which is normal
+      if (code === 0 || code === 1) {
+        // Handle unclosed silence (silence that continues to end of video)
+        if (currentSilenceStart !== null) {
+          const finalDuration = videoDuration || detectedDuration;
+          if (finalDuration) {
+            const duration = finalDuration - currentSilenceStart;
+            mutedSegments.push({
+              offset: currentSilenceStart,
+              duration: duration,
+            });
+            console.log(
+              `[Mute Detection] Final silence segment (to end): ${currentSilenceStart.toFixed(
+                2
+              )}s - ${finalDuration.toFixed(2)}s (duration: ${duration.toFixed(
+                2
+              )}s)`
+            );
+          }
+        }
+        console.log(
+          `[Mute Detection] Detection complete. Found ${mutedSegments.length} muted segment(s)`
+        );
+        if (mutedSegments.length > 0) {
+          console.log(
+            `[Mute Detection] Muted segments:`,
+            JSON.stringify(mutedSegments, null, 2)
+          );
+        }
+        if (progressCallback) {
+          progressCallback({
+            stage: 'complete',
+            segmentsFound: mutedSegments.length,
+            totalSegments: mutedSegments.length,
+          });
+        }
+        resolve(mutedSegments);
+      } else {
+        console.error(`[Mute Detection] Failed with exit code ${code}`);
+        console.error(`[Mute Detection] Output: ${output}`);
+        console.error(`[Mute Detection] Error: ${errorOutput}`);
+        reject(
+          new Error(
+            `ffmpeg silencedetect failed with code ${code}. Output: ${output}\nError: ${errorOutput}`
+          )
+        );
+      }
+    });
+
+    ffmpegProcess.on('error', (err) => {
+      console.error(`[Mute Detection] Process error:`, err);
+      if (err.code === 'ENOENT') {
+        reject(new Error('ffmpeg not found. Please install ffmpeg.'));
+      } else {
+        reject(err);
+      }
+    });
+  });
 }
 
 export async function processVod(vodId) {
@@ -284,8 +461,67 @@ export async function processVod(vodId) {
   );
 
   try {
-    const mutedSegments = JSON.parse(vod.muted_segments || '[]');
-    const outputPath = join(PROCESSED_STORAGE, `${vodId}_processed.mp4`);
+    let mutedSegments = JSON.parse(vod.muted_segments || '[]');
+    const outputPath = resolve(PROCESSED_STORAGE, `${vodId}_processed.mp4`);
+
+    // If muted_segments is null or empty, try to detect mutes using ffmpeg
+    if (
+      mutedSegments.length === 0 &&
+      vod.file_path &&
+      existsSync(vod.file_path)
+    ) {
+      console.log(
+        `No muted segments from Twitch API for VOD ${vodId}, detecting with ffmpeg...`
+      );
+      broadcastStatus({
+        type: 'process_progress',
+        vodId,
+        message: 'Detecting muted segments with ffmpeg...',
+      });
+
+      try {
+        const totalDuration = parseDuration(vod.duration);
+        mutedSegments = await detectMutedSegmentsWithFfmpeg(
+          vod.file_path,
+          totalDuration,
+          (progress) => {
+            broadcastStatus({
+              type: 'process_progress',
+              vodId,
+              stage: 'mute_detection',
+              message:
+                progress.stage === 'complete'
+                  ? `Mute detection complete: Found ${progress.segmentsFound} segment(s)`
+                  : progress.latestSegment
+                  ? `Found ${
+                      progress.segmentsFound
+                    } muted segment(s) (latest: ${progress.latestSegment.offset.toFixed(
+                      1
+                    )}s - ${progress.latestSegment.end.toFixed(1)}s)`
+                  : `Detecting muted segments... (${progress.segmentsFound} found so far)`,
+              segmentsFound: progress.segmentsFound,
+              latestSegment: progress.latestSegment,
+            });
+          }
+        );
+        console.log(
+          `Detected ${mutedSegments.length} muted segment(s) for VOD ${vodId}`
+        );
+
+        // Update database with detected muted segments
+        db.prepare('UPDATE vods SET muted_segments = ? WHERE id = ?').run(
+          JSON.stringify(mutedSegments),
+          vodId
+        );
+      } catch (error) {
+        console.error(
+          `Failed to detect muted segments with ffmpeg for VOD ${vodId}:`,
+          error.message
+        );
+        // Continue processing even if detection fails
+        mutedSegments = [];
+      }
+    }
 
     if (mutedSegments.length === 0) {
       const { copyFileSync } = await import('fs');
@@ -320,11 +556,23 @@ export async function processVod(vodId) {
       });
     }
 
+    broadcastStatus({
+      type: 'process_progress',
+      vodId,
+      stage: 'extracting_segments',
+      message: `Extracting ${keepSegments.length} segment(s) from video...`,
+      segment: 0,
+      total: keepSegments.length,
+    });
+
     const segmentFiles = [];
 
     for (let i = 0; i < keepSegments.length; i++) {
       const segment = keepSegments[i];
-      const segmentPath = join(PROCESSED_STORAGE, `${vodId}_segment_${i}.mp4`);
+      const segmentPath = resolve(
+        PROCESSED_STORAGE,
+        `${vodId}_segment_${i}.mp4`
+      );
 
       await new Promise((resolve, reject) => {
         ffmpeg(vod.file_path)
@@ -343,28 +591,42 @@ export async function processVod(vodId) {
       broadcastStatus({
         type: 'process_progress',
         vodId,
+        stage: 'extracting_segments',
+        message: `Extracted segment ${i + 1}/${
+          keepSegments.length
+        } (${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s)`,
         segment: i + 1,
         total: keepSegments.length,
       });
     }
 
-    const concatListPath = join(PROCESSED_STORAGE, `${vodId}_concat.txt`);
+    broadcastStatus({
+      type: 'process_progress',
+      vodId,
+      stage: 'concatenating',
+      message: 'Concatenating segments...',
+    });
+
+    const concatListPath = resolve(PROCESSED_STORAGE, `${vodId}_concat.txt`);
     const { writeFileSync, unlinkSync } = await import('fs');
+
+    // Use absolute paths for segment files in concat list
+    const absoluteSegmentFiles = segmentFiles.map((f) => resolve(f));
     writeFileSync(
       concatListPath,
-      segmentFiles.map((f) => `file '${f}'`).join('\n')
+      absoluteSegmentFiles.map((f) => `file '${f}'`).join('\n')
     );
 
-    await new Promise((resolve, reject) => {
+    await new Promise((resolvePromise, reject) => {
       ffmpeg()
         .input(concatListPath)
-        .inputOptions('-f concat', '-safe 0')
+        .inputOptions(['-f', 'concat', '-safe', '0'])
         .outputOptions('-c copy')
         .output(outputPath)
         .on('end', () => {
           segmentFiles.forEach((f) => unlinkSync(f));
           unlinkSync(concatListPath);
-          resolve();
+          resolvePromise();
         })
         .on('error', reject)
         .run();
@@ -385,4 +647,3 @@ export async function processVod(vodId) {
     throw error;
   }
 }
-
