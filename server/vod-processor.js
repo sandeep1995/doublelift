@@ -1,10 +1,9 @@
 import { spawn } from 'child_process';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
-import axios from 'axios';
 import ffmpeg from 'fluent-ffmpeg';
 import { getDatabase } from './database.js';
-import { getMutedSegments, getVodDetails } from './twitch-api.js';
+import { getMutedSegments } from './twitch-api.js';
 import { broadcastStatus } from './websocket.js';
 
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
@@ -14,43 +13,6 @@ if (!existsSync(VOD_STORAGE)) mkdirSync(VOD_STORAGE, { recursive: true });
 if (!existsSync(PROCESSED_STORAGE))
   mkdirSync(PROCESSED_STORAGE, { recursive: true });
 
-async function getVodDownloadUrl(vodId) {
-  /**
-   * Sample response from getVodDetails:
-   * {
-   *   id: '2609909937',
-   *   stream_id: '315570066648',
-   *   user_id: '40017619',
-   *   user_login: 'doublelift',
-   *   user_name: 'Doublelift',
-   *   title: '✅LAST STREAM BEFORE WORLDS + JAPAN TRIP, WILL BE BACK ON 11/16✅༼ ºل͜º ༽ºل͜º ༽ºل͜º ༽ ＥＶＥＲＹＯＮＥ，ＧＥＴ ＩＮ ＨＥＲＥ ༼ ºل͜º༼ ºل͜º༼ ºل͜º ༽✅',
-   *   description: '',
-   *   created_at: '2025-11-04T23:02:45Z',
-   *   published_at: '2025-11-04T23:02:45Z',
-   *   url: 'https://www.twitch.tv/videos/2609909937',
-   *   thumbnail_url: 'https://static-cdn.jtvnw.net/cf_vods/d2nvs31859zcd8/e48f6b7600222960fdc8_doublelift_315570066648_1762297359//thumb/thumb0-%{width}x%{height}.jpg',
-   *   viewable: 'public',
-   *   view_count: 70293,
-   *   language: 'en',
-   *   type: 'archive',
-   *   duration: '4h43m17s',
-   *   muted_segments: null
-   * }
-   */
-  const vodDetails = await getVodDetails(vodId);
-  
-  if (!vodDetails) {
-    throw new Error(`VOD ${vodId} not found`);
-  }
-
-  const thumbnailUrl = vodDetails.thumbnail_url;
-  if (!thumbnailUrl) {
-    throw new Error('Could not find VOD thumbnail URL');
-  }
-
-  const baseUrl = thumbnailUrl.split('/thumb/')[0];
-  return `${baseUrl}/chunked/index-dvr.m3u8`;
-}
 
 export async function downloadVod(vodId) {
   const db = getDatabase();
@@ -76,42 +38,92 @@ export async function downloadVod(vodId) {
   ).run('downloading', new Date().toISOString(), vodId);
 
   try {
-    const m3u8Url = await getVodDownloadUrl(vodId);
     const outputPath = join(VOD_STORAGE, `${vodId}.mp4`);
 
     await new Promise((resolve, reject) => {
+      let output = '';
       let lastPercent = 0;
 
-      ffmpeg(m3u8Url)
-        .outputOptions('-c copy')
-        .output(outputPath)
-        .on('progress', (progress) => {
-          if (progress.percent) {
-            const percent = Math.round(progress.percent);
-            if (percent !== lastPercent) {
-              lastPercent = percent;
-              db.prepare(
-                'UPDATE vods SET download_progress = ? WHERE id = ?'
-              ).run(percent, vodId);
+      // Use twitch-dl to download the VOD
+      // twitch-dl downloads to the current directory, so we change to VOD_STORAGE
+      const twitchDl = spawn('twitch-dl', ['download', vodId], {
+        cwd: VOD_STORAGE,
+      });
 
-              broadcastStatus({
-                type: 'download_progress',
-                vodId,
-                percent,
-              });
-            }
+      twitchDl.stdout.on('data', (data) => {
+        output += data.toString();
+        console.log(`twitch-dl: ${data.toString()}`);
+
+        // Try to parse progress from output
+        // twitch-dl outputs progress like: "Downloading: 45%"
+        const progressMatch = output.match(/(\d+)%/);
+        if (progressMatch) {
+          const percent = parseInt(progressMatch[1]);
+          if (percent !== lastPercent && percent >= 0 && percent <= 100) {
+            lastPercent = percent;
+            db.prepare(
+              'UPDATE vods SET download_progress = ? WHERE id = ?'
+            ).run(percent, vodId);
+
+            broadcastStatus({
+              type: 'download_progress',
+              vodId,
+              percent,
+            });
           }
-        })
-        .on('end', () => {
-          console.log(`Downloaded VOD ${vodId}`);
+        }
+      });
+
+      twitchDl.stderr.on('data', (data) => {
+        output += data.toString();
+        console.error(`twitch-dl stderr: ${data.toString()}`);
+      });
+
+      twitchDl.on('close', (code) => {
+        if (code === 0) {
+          console.log(`Downloaded VOD ${vodId} using twitch-dl`);
           resolve();
-        })
-        .on('error', (err) => {
-          console.error(`Error downloading VOD ${vodId}:`, err);
+        } else {
+          reject(
+            new Error(
+              `twitch-dl exited with code ${code}. Output: ${output}`
+            )
+          );
+        }
+      });
+
+      twitchDl.on('error', (err) => {
+        if (err.code === 'ENOENT') {
+          reject(
+            new Error(
+              'twitch-dl not found. Please install it with: pip install twitch-dl'
+            )
+          );
+        } else {
           reject(err);
-        })
-        .run();
+        }
+      });
     });
+
+    // Find the downloaded file (twitch-dl may create a different filename)
+    const files = readdirSync(VOD_STORAGE);
+    const downloadedFile = files.find(
+      (file) => file.includes(vodId) && file.endsWith('.mp4')
+    );
+
+    if (!downloadedFile) {
+      throw new Error(
+        `Downloaded file not found in ${VOD_STORAGE}. Files: ${files.join(', ')}`
+      );
+    }
+
+    const actualOutputPath = join(VOD_STORAGE, downloadedFile);
+
+    // Rename to our expected filename if different
+    if (downloadedFile !== `${vodId}.mp4`) {
+      const { renameSync } = await import('fs');
+      renameSync(actualOutputPath, outputPath);
+    }
 
     db.prepare(
       'UPDATE vods SET downloaded = 1, download_status = ?, download_progress = 100, file_path = ?, error_message = NULL WHERE id = ?'
