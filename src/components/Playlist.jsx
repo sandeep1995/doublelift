@@ -90,7 +90,7 @@ function Playlist() {
           onClick={handleUpdatePlaylist}
           disabled={updating}
         >
-          {updating ? 'Updating...' : '🔄 Update Playlist'}
+          {updating ? 'Updating...' : 'Update Playlist'}
         </button>
       </div>
 

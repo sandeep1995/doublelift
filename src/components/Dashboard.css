@@ -7,35 +7,36 @@
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: #1f1f23;
-  border-radius: 6px;
+  background: #f9fafb;
+  border-radius: 8px;
   margin-bottom: 1.5rem;
-  border: 1px solid #2c2c34;
+  border: 1px solid #e5e7eb;
 }
 
 .stream-status .status-label {
   font-size: 1rem;
   font-weight: 600;
-  color: #efeff1;
+  color: #1d1d1f;
 }
 
 .info-row {
   display: flex;
   justify-content: space-between;
-  padding: 0.75rem;
-  background: #1f1f23;
-  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  background: #f9fafb;
+  border-radius: 6px;
   margin-top: 0.5rem;
-  border: 1px solid #2c2c34;
+  border: 1px solid #e5e7eb;
 }
 
 .info-label {
-  color: #adadb8;
+  color: #6b7280;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .info-value {
-  color: #efeff1;
+  color: #1d1d1f;
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 600;
 }

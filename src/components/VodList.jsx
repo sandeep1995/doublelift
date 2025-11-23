@@ -358,7 +358,7 @@ function VodList() {
       // Show default processing message if no progress data yet
       return (
         <div className='vod-progress-details'>
-          <span className='process-stage'>⚙ Processing...</span>
+          <span className='process-stage'>Processing...</span>
         </div>
       );
     }
@@ -366,7 +366,7 @@ function VodList() {
     if (progress.stage === 'mute_detection') {
       return (
         <div className='vod-progress-details'>
-          <span className='process-stage'>🔍 Mute Detection:</span>{' '}
+          <span className='process-stage'>Mute Detection:</span>{' '}
           {progress.message}
           {progress.segmentsFound > 0 && (
             <span className='segments-count'>
@@ -386,7 +386,7 @@ function VodList() {
           : '';
       return (
         <div className='vod-progress-details'>
-          <span className='process-stage'>✂ Extracting Segments:</span>{' '}
+          <span className='process-stage'>Extracting Segments:</span>{' '}
           {progress.message || `Extracting segments${segmentInfo}...`}
         </div>
       );
@@ -395,7 +395,7 @@ function VodList() {
     if (progress.stage === 'concatenating') {
       return (
         <div className='vod-progress-details'>
-          <span className='process-stage'>🔗 Concatenating:</span>{' '}
+          <span className='process-stage'>Concatenating:</span>{' '}
           {progress.message || 'Merging segments into final video...'}
         </div>
       );
@@ -404,15 +404,14 @@ function VodList() {
     if (progress.message) {
       return (
         <div className='vod-progress-details'>
-          <span className='process-stage'>⚙ Processing:</span>{' '}
-          {progress.message}
+          <span className='process-stage'>Processing:</span> {progress.message}
         </div>
       );
     }
 
     return (
       <div className='vod-progress-details'>
-        <span className='process-stage'>⚙ Processing...</span>
+        <span className='process-stage'>Processing...</span>
       </div>
     );
   };
@@ -451,7 +450,7 @@ function VodList() {
           onClick={() => handleDownload(vod.id)}
           disabled={!!inProgress}
         >
-          {inProgress === 'downloading' ? 'Queueing...' : '▼ Download'}
+          {inProgress === 'downloading' ? 'Queueing...' : 'Download'}
         </button>
       );
     }
@@ -464,7 +463,7 @@ function VodList() {
           onClick={() => handleRetry(vod.id)}
           disabled={!!inProgress}
         >
-          {inProgress === 'retrying' ? 'Retrying...' : '↻ Retry'}
+          {inProgress === 'retrying' ? 'Retrying...' : 'Retry'}
         </button>
       );
     }
@@ -477,7 +476,7 @@ function VodList() {
           onClick={() => handleProcess(vod.id)}
           disabled={!!inProgress}
         >
-          {inProgress === 'processing' ? 'Processing...' : '⚙ Process'}
+          {inProgress === 'processing' ? 'Processing...' : 'Process'}
         </button>
       );
     }
@@ -491,7 +490,7 @@ function VodList() {
           disabled={!!inProgress}
           title='Reprocess video to re-detect muted segments'
         >
-          {inProgress === 'reprocessing' ? 'Reprocessing...' : '🔄 Reprocess'}
+          {inProgress === 'reprocessing' ? 'Reprocessing...' : 'Reprocess'}
         </button>
       );
 
@@ -504,9 +503,7 @@ function VodList() {
             onClick={() => handleRemoveFromPlaylist(vod.id)}
             disabled={!!inProgress}
           >
-            {inProgress === 'removing'
-              ? 'Removing...'
-              : '➖ Remove from Playlist'}
+            {inProgress === 'removing' ? 'Removing...' : 'Remove from Playlist'}
           </button>
         );
       } else {
@@ -517,7 +514,7 @@ function VodList() {
             onClick={() => handleAddToPlaylist(vod.id)}
             disabled={!!inProgress}
           >
-            {inProgress === 'adding' ? 'Adding...' : '➕ Add to Playlist'}
+            {inProgress === 'adding' ? 'Adding...' : 'Add to Playlist'}
           </button>
         );
       }
@@ -547,7 +544,7 @@ function VodList() {
             onClick={handleRestartQueue}
             title='Restart download queue processing'
           >
-            ▶ Restart Queue ({queueStatus.queued})
+            Restart Queue ({queueStatus.queued})
           </button>
         )}
       </div>
@@ -586,7 +583,7 @@ function VodList() {
               {vod.muted_segments &&
                 JSON.parse(vod.muted_segments).length > 0 && (
                   <div className='vod-warning'>
-                    ⚠ {JSON.parse(vod.muted_segments).length} muted segment(s)
+                    {JSON.parse(vod.muted_segments).length} muted segment(s)
                   </div>
                 )}
               {renderActions(vod)}

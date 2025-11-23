@@ -16,32 +16,33 @@
 .current-stream-info {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: #1f1f23;
-  border-radius: 6px;
-  border: 1px solid #2c2c34;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
 .current-label {
-  color: #adadb8;
+  color: #6b7280;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .current-value {
-  color: #00f593;
+  color: #10b981;
   font-size: 1.1rem;
   font-weight: 600;
 }
 
 .stream-info-panel {
   margin-top: 1.5rem;
-  padding: 1rem;
-  background: linear-gradient(135deg, #1f1f23 0%, #2c2c34 100%);
-  border-radius: 6px;
-  border: 2px solid #9147ff;
-  box-shadow: 0 0 20px rgba(145, 71, 255, 0.3);
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 8px;
+  border: 2px solid #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
 }
 
 .stream-info-header {
@@ -50,11 +51,11 @@
   align-items: center;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #2c2c34;
+  border-bottom: 1px solid #c7d2fe;
 }
 
 .stream-status-indicator {
-  color: #ff4444;
+  color: #ef4444;
   font-weight: 700;
   font-size: 1rem;
   animation: pulse 2s infinite;
@@ -66,12 +67,12 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.6;
   }
 }
 
 .stream-elapsed {
-  color: #00f593;
+  color: #10b981;
   font-weight: 600;
   font-size: 1rem;
   font-family: 'Courier New', monospace;
@@ -91,13 +92,13 @@
 }
 
 .stream-info-label {
-  color: #adadb8;
+  color: #4b5563;
   font-size: 0.9rem;
   font-weight: 500;
 }
 
 .stream-info-value {
-  color: #efeff1;
+  color: #1d1d1f;
   font-size: 0.95rem;
   font-weight: 600;
   text-align: right;
@@ -113,7 +114,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,25 +122,27 @@
 }
 
 .start-dialog {
-  background: #18181b;
-  border-radius: 8px;
+  background: #ffffff;
+  border-radius: 12px;
   padding: 2rem;
   max-width: 500px;
   width: 90%;
-  border: 2px solid #9147ff;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 .start-dialog h3 {
   margin: 0 0 1rem 0;
-  color: #efeff1;
+  color: #1d1d1f;
   font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .dialog-description {
-  color: #adadb8;
+  color: #6b7280;
   margin-bottom: 1.5rem;
   font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .start-options {
@@ -159,7 +162,7 @@
 
 .option-detail {
   font-size: 0.85rem;
-  color: #adadb8;
+  color: #6b7280;
   margin-top: 0.25rem;
   font-weight: 400;
 }
@@ -167,9 +170,9 @@
 .last-stream-info {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: #1f1f23;
-  border-radius: 6px;
-  border: 1px solid #2c2c34;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
 }
 
 .last-stream-header {
@@ -177,7 +180,7 @@
 }
 
 .last-stream-label {
-  color: #adadb8;
+  color: #6b7280;
   font-size: 0.9rem;
   font-weight: 500;
 }
@@ -189,7 +192,7 @@
 }
 
 .last-stream-title {
-  color: #efeff1;
+  color: #1d1d1f;
   font-size: 0.95rem;
   font-weight: 600;
   overflow: hidden;
@@ -198,7 +201,7 @@
 }
 
 .last-stream-position {
-  color: #00f593;
+  color: #10b981;
   font-size: 0.85rem;
   font-weight: 500;
 }

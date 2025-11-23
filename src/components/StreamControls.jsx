@@ -162,7 +162,7 @@ function StreamControls({ status, onUpdate }) {
                 onClick={() => handleStartStream({ resume: false })}
                 disabled={loading}
               >
-                ▶ Start from Beginning
+                Start from Beginning
               </button>
               {status?.lastVodId && status?.lastVodTitle && (
                 <button
@@ -170,7 +170,7 @@ function StreamControls({ status, onUpdate }) {
                   onClick={() => handleStartStream({ resume: true })}
                   disabled={loading}
                 >
-                  🔄 Resume from Last Position
+                  Resume from Last Position
                   <span className='option-detail'>
                     ({status.lastVodTitle.substring(0, 50)}
                     {status.lastVodTitle.length > 50 ? '...' : ''})
@@ -213,7 +213,7 @@ function StreamControls({ status, onUpdate }) {
             disabled={loading}
             title='Skip to next VOD in playlist'
           >
-            ⏭ Skip Next
+            Skip Next
           </button>
         )}
 
@@ -224,7 +224,7 @@ function StreamControls({ status, onUpdate }) {
             disabled={loading}
             title='Reload playlist without stopping stream'
           >
-            🔄 Reload Playlist
+            Reload Playlist
           </button>
         )}
 

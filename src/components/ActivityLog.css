@@ -15,31 +15,31 @@
 }
 
 .log-items::-webkit-scrollbar-track {
-  background: #1f1f23;
+  background: #f3f4f6;
   border-radius: 4px;
 }
 
 .log-items::-webkit-scrollbar-thumb {
-  background: #3a3a3d;
+  background: #d1d5db;
   border-radius: 4px;
 }
 
 .log-items::-webkit-scrollbar-thumb:hover {
-  background: #4c4c52;
+  background: #9ca3af;
 }
 
 .log-item {
-  background: #1f1f23;
+  background: #ffffff;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
-  border: 1px solid #2c2c34;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
   display: flex;
   gap: 1rem;
   align-items: flex-start;
 }
 
 .log-time {
-  color: #adadb8;
+  color: #6b7280;
   font-size: 0.85rem;
   font-family: 'Courier New', monospace;
   white-space: nowrap;
@@ -47,10 +47,9 @@
 }
 
 .log-message {
-  color: #efeff1;
+  color: #1d1d1f;
   font-size: 0.9rem;
   flex: 1;
   word-break: break-word;
   white-space: normal;
 }
-
