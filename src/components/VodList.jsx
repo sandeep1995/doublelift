@@ -5,11 +5,60 @@ function VodList() {
   const [vods, setVods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState({});
+  const [downloadProgress, setDownloadProgress] = useState({});
+  const [queueStatus, setQueueStatus] = useState(null);
 
   useEffect(() => {
     fetchVods();
-    const interval = setInterval(fetchVods, 3000);
+    fetchQueueStatus();
+    const interval = setInterval(() => {
+      fetchVods();
+      fetchQueueStatus();
+    }, 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  const fetchQueueStatus = async () => {
+    try {
+      const response = await fetch('/api/vods/queue/status');
+      const data = await response.json();
+      setQueueStatus(data);
+    } catch (error) {
+      console.error('Failed to fetch queue status:', error);
+    }
+  };
+
+  useEffect(() => {
+    const websocket = new WebSocket(`ws://${window.location.hostname}:3000`);
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'download_progress' && data.vodId) {
+        setDownloadProgress((prev) => ({
+          ...prev,
+          [data.vodId]: {
+            percent: data.percent,
+            vodsCount: data.vodsCount,
+            totalVods: data.totalVods,
+            totalSize: data.totalSize,
+            speed: data.speed,
+            eta: data.eta,
+            logLine: data.logLine,
+          },
+        }));
+      }
+    };
+
+    websocket.onclose = () => {
+      setTimeout(() => {
+        const newWs = new WebSocket(`ws://${window.location.hostname}:3000`);
+        newWs.onmessage = websocket.onmessage;
+      }, 5000);
+    };
+
+    return () => {
+      websocket.close();
+    };
   }, []);
 
   const fetchVods = async () => {
@@ -68,6 +117,22 @@ function VodList() {
     }
   };
 
+  const handleRestartQueue = async () => {
+    try {
+      const response = await fetch('/api/vods/queue/restart', {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert('Download queue restarted');
+        await fetchVods();
+      }
+    } catch (error) {
+      console.error('Failed to restart queue:', error);
+      alert('Failed to restart queue: ' + error.message);
+    }
+  };
+
   const handleProcess = async (vodId) => {
     setActionInProgress((prev) => ({ ...prev, [vodId]: 'processing' }));
     try {
@@ -106,12 +171,15 @@ function VodList() {
     }
 
     switch (status) {
-      case 'downloading':
+      case 'downloading': {
+        const progress = downloadProgress[vod.id];
+        const percent = progress?.percent ?? vod.download_progress ?? 0;
         return (
           <span className='badge badge-info'>
-            Downloading {vod.download_progress || 0}%
+            Downloading {percent}%
           </span>
         );
+      }
       case 'queued':
         return <span className='badge badge-warning'>Queued</span>;
       case 'failed':
@@ -121,6 +189,44 @@ function VodList() {
       default:
         return <span className='badge badge-pending'>Pending</span>;
     }
+  };
+
+  const getDownloadProgressDetails = (vod) => {
+    if (vod.download_status !== 'downloading') {
+      return null;
+    }
+
+    const progress = downloadProgress[vod.id];
+    if (!progress) {
+      return null;
+    }
+
+    const parts = [];
+    if (progress.vodsCount !== null && progress.totalVods !== null) {
+      parts.push(`Downloaded ${progress.vodsCount}/${progress.totalVods} VODs`);
+    }
+    if (progress.percent !== null) {
+      parts.push(`${progress.percent}%`);
+    }
+    if (progress.totalSize) {
+      parts.push(`of ${progress.totalSize}`);
+    }
+    if (progress.speed) {
+      parts.push(`at ${progress.speed}`);
+    }
+    if (progress.eta) {
+      parts.push(`ETA ${progress.eta}`);
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className='vod-progress-details'>
+        {parts.join(' ')}
+      </div>
+    );
   };
 
   const getProcessStatusBadge = (vod) => {
@@ -204,7 +310,18 @@ function VodList() {
 
   return (
     <div className='card vod-list'>
-      <h2>VOD Library</h2>
+      <div className='vod-list-header'>
+        <h2>VOD Library</h2>
+        {queueStatus && queueStatus.queued > 0 && (
+          <button
+            className='action-btn btn-info'
+            onClick={handleRestartQueue}
+            title='Restart download queue processing'
+          >
+            ▶ Restart Queue ({queueStatus.queued})
+          </button>
+        )}
+      </div>
 
       <div className='vod-count'>
         {vods.length} VOD{vods.length !== 1 ? 's' : ''}
@@ -229,6 +346,7 @@ function VodList() {
                   {getProcessStatusBadge(vod)}
                 </div>
               </div>
+              {getDownloadProgressDetails(vod)}
               {vod.error_message && (
                 <div className='vod-error'>
                   Error: {vod.error_message}

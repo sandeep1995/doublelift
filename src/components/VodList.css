@@ -5,6 +5,17 @@
   flex-direction: column;
 }
 
+.vod-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.vod-list-header h2 {
+  margin: 0;
+}
+
 .vod-count {
   color: #adadb8;
   font-size: 0.9rem;
@@ -147,6 +158,20 @@
   font-size: 0.85rem;
 }
 
+.vod-progress-details {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(30, 144, 255, 0.1);
+  border: 1px solid rgba(30, 144, 255, 0.3);
+  border-radius: 4px;
+  color: #87ceeb;
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .vod-actions {
   display: flex;
   gap: 0.5rem;
@@ -200,6 +225,16 @@
 
 .btn-warning:hover:not(:disabled) {
   background: #e69500;
+  transform: translateY(-1px);
+}
+
+.btn-info {
+  background: #1e90ff;
+  color: #fff;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: #1873cc;
   transform: translateY(-1px);
 }
 

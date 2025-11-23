@@ -6,6 +6,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase } from './database.js';
 import { startScheduler } from './scheduler.js';
+import { downloadQueue } from './download-queue.js';
 import vodRoutes from './routes/vod.js';
 import streamRoutes from './routes/stream.js';
 import statusRoutes from './routes/status.js';
@@ -22,6 +23,9 @@ app.use(cors());
 app.use(express.json());
 
 initDatabase();
+
+// Reset any stuck downloads from previous session
+downloadQueue.resetStuckDownloads();
 
 app.use('/api/vods', vodRoutes);
 app.use('/api/stream', streamRoutes);

@@ -8,10 +8,16 @@ import { broadcastStatus } from './websocket.js';
 
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
 const PROCESSED_STORAGE = process.env.PROCESSED_STORAGE_PATH || './processed';
+const CACHE_DIR = process.env.TWITCH_DL_CACHE_DIR || join(VOD_STORAGE, '.cache');
+const DOWNLOAD_QUALITY = process.env.DOWNLOAD_QUALITY || 'source';
+const DOWNLOAD_FORMAT = process.env.DOWNLOAD_FORMAT || 'mp4';
+const DOWNLOAD_RATE_LIMIT = process.env.DOWNLOAD_RATE_LIMIT || null;
+const TWITCH_AUTH_TOKEN = process.env.TWITCH_AUTH_TOKEN || null;
 
 if (!existsSync(VOD_STORAGE)) mkdirSync(VOD_STORAGE, { recursive: true });
 if (!existsSync(PROCESSED_STORAGE))
   mkdirSync(PROCESSED_STORAGE, { recursive: true });
+if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
 
 
 export async function downloadVod(vodId) {
@@ -38,45 +44,137 @@ export async function downloadVod(vodId) {
   ).run('downloading', new Date().toISOString(), vodId);
 
   try {
-    const outputPath = join(VOD_STORAGE, `${vodId}.mp4`);
+    // Use a predictable filename format: {id}.{format}
+    const outputFilename = `${vodId}.${DOWNLOAD_FORMAT}`;
+    const outputPath = join(VOD_STORAGE, outputFilename);
+
+    // Build twitch-dl command arguments
+    const args = [
+      'download',
+      vodId,
+      '--quality',
+      DOWNLOAD_QUALITY,
+      '--format',
+      DOWNLOAD_FORMAT,
+      '--output',
+      outputFilename,
+      '--skip-existing',
+      '--cache-dir',
+      join(CACHE_DIR, vodId),
+    ];
+
+    // Add authentication token if available (for subscriber-only VODs)
+    if (TWITCH_AUTH_TOKEN) {
+      args.push('--auth-token', TWITCH_AUTH_TOKEN);
+    }
+
+    // Add rate limit if configured
+    if (DOWNLOAD_RATE_LIMIT) {
+      args.push('--rate-limit', DOWNLOAD_RATE_LIMIT);
+    }
 
     await new Promise((resolve, reject) => {
       let output = '';
       let lastPercent = 0;
+      let errorOutput = '';
+      let lastProgressUpdate = 0;
+
+      // Function to parse detailed progress from twitch-dl output
+      const parseProgress = (text) => {
+        const progress = {
+          percent: null,
+          vodsCount: null,
+          totalVods: null,
+          totalSize: null,
+          speed: null,
+          eta: null,
+        };
+
+        // Parse percentage: "1%" or "Downloaded 27/2005 VODs 1%"
+        const percentMatch = text.match(/(\d+)%/);
+        if (percentMatch) {
+          progress.percent = parseInt(percentMatch[1]);
+        }
+
+        // Parse VODs count: "Downloaded 27/2005 VODs"
+        const vodsMatch = text.match(/Downloaded\s+(\d+)\/(\d+)\s+VODs/i);
+        if (vodsMatch) {
+          progress.vodsCount = parseInt(vodsMatch[1]);
+          progress.totalVods = parseInt(vodsMatch[2]);
+        }
+
+        // Parse total size: "of ~18.4GB" or "18.4GB"
+        const sizeMatch = text.match(/of\s+~?([\d.]+)\s*(GB|MB|KB|TB)/i);
+        if (sizeMatch) {
+          progress.totalSize = `${sizeMatch[1]}${sizeMatch[2].toUpperCase()}`;
+        }
+
+        // Parse speed: "at 31.2MB/s" or "31.2MB/s"
+        const speedMatch = text.match(/at\s+([\d.]+)\s*(GB|MB|KB|TB)\/s/i);
+        if (speedMatch) {
+          progress.speed = `${speedMatch[1]}${speedMatch[2].toUpperCase()}/s`;
+        }
+
+        // Parse ETA: "ETA 09:54" or "09:54"
+        const etaMatch = text.match(/ETA\s+(\d{1,2}:\d{2})/i);
+        if (etaMatch) {
+          progress.eta = etaMatch[1];
+        }
+
+        return progress;
+      };
 
       // Use twitch-dl to download the VOD
-      // twitch-dl downloads to the current directory, so we change to VOD_STORAGE
-      const twitchDl = spawn('twitch-dl', ['download', vodId], {
+      const twitchDl = spawn('twitch-dl', args, {
         cwd: VOD_STORAGE,
+        env: { ...process.env },
       });
 
-      twitchDl.stdout.on('data', (data) => {
-        output += data.toString();
-        console.log(`twitch-dl: ${data.toString()}`);
+      const handleProgressData = (dataStr, isStderr = false) => {
+        const progress = parseProgress(dataStr);
 
-        // Try to parse progress from output
-        // twitch-dl outputs progress like: "Downloading: 45%"
-        const progressMatch = output.match(/(\d+)%/);
-        if (progressMatch) {
-          const percent = parseInt(progressMatch[1]);
-          if (percent !== lastPercent && percent >= 0 && percent <= 100) {
-            lastPercent = percent;
-            db.prepare(
-              'UPDATE vods SET download_progress = ? WHERE id = ?'
-            ).run(percent, vodId);
-
-            broadcastStatus({
-              type: 'download_progress',
-              vodId,
-              percent,
-            });
-          }
+        // Update if we have new percentage
+        if (progress.percent !== null && progress.percent !== lastPercent) {
+          lastPercent = progress.percent;
+          db.prepare(
+            'UPDATE vods SET download_progress = ? WHERE id = ?'
+          ).run(progress.percent, vodId);
         }
+
+        // Broadcast detailed progress (throttle to once per second)
+        const now = Date.now();
+        if (now - lastProgressUpdate > 1000 || progress.percent !== null) {
+          lastProgressUpdate = now;
+
+          const progressData = {
+            type: 'download_progress',
+            vodId,
+            percent: progress.percent !== null ? progress.percent : lastPercent,
+            vodsCount: progress.vodsCount,
+            totalVods: progress.totalVods,
+            totalSize: progress.totalSize,
+            speed: progress.speed,
+            eta: progress.eta,
+            logLine: dataStr.trim(),
+          };
+
+          broadcastStatus(progressData);
+        }
+      };
+
+      twitchDl.stdout.on('data', (data) => {
+        const dataStr = data.toString();
+        output += dataStr;
+        console.log(`twitch-dl: ${dataStr}`);
+        handleProgressData(dataStr, false);
       });
 
       twitchDl.stderr.on('data', (data) => {
-        output += data.toString();
-        console.error(`twitch-dl stderr: ${data.toString()}`);
+        const dataStr = data.toString();
+        errorOutput += dataStr;
+        output += dataStr;
+        console.error(`twitch-dl stderr: ${dataStr}`);
+        handleProgressData(dataStr, true);
       });
 
       twitchDl.on('close', (code) => {
@@ -84,11 +182,19 @@ export async function downloadVod(vodId) {
           console.log(`Downloaded VOD ${vodId} using twitch-dl`);
           resolve();
         } else {
-          reject(
-            new Error(
-              `twitch-dl exited with code ${code}. Output: ${output}`
-            )
-          );
+          // Check if file exists despite non-zero exit code (might be skip-existing)
+          if (existsSync(outputPath)) {
+            console.log(
+              `VOD ${vodId} file exists despite exit code ${code}, treating as success`
+            );
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `twitch-dl exited with code ${code}. Output: ${output}\nError: ${errorOutput}`
+              )
+            );
+          }
         }
       });
 
@@ -96,7 +202,7 @@ export async function downloadVod(vodId) {
         if (err.code === 'ENOENT') {
           reject(
             new Error(
-              'twitch-dl not found. Please install it with: pip install twitch-dl'
+              'twitch-dl not found. Please install it with: pip install twitch-dl or pipx install twitch-dl'
             )
           );
         } else {
@@ -105,24 +211,24 @@ export async function downloadVod(vodId) {
       });
     });
 
-    // Find the downloaded file (twitch-dl may create a different filename)
-    const files = readdirSync(VOD_STORAGE);
-    const downloadedFile = files.find(
-      (file) => file.includes(vodId) && file.endsWith('.mp4')
-    );
-
-    if (!downloadedFile) {
-      throw new Error(
-        `Downloaded file not found in ${VOD_STORAGE}. Files: ${files.join(', ')}`
+    // Verify the file was downloaded
+    if (!existsSync(outputPath)) {
+      // Fallback: try to find any file with the VOD ID
+      const files = readdirSync(VOD_STORAGE);
+      const downloadedFile = files.find(
+        (file) => file.includes(vodId) && (file.endsWith(`.${DOWNLOAD_FORMAT}`) || file.endsWith('.mp4') || file.endsWith('.ts'))
       );
-    }
 
-    const actualOutputPath = join(VOD_STORAGE, downloadedFile);
-
-    // Rename to our expected filename if different
-    if (downloadedFile !== `${vodId}.mp4`) {
-      const { renameSync } = await import('fs');
-      renameSync(actualOutputPath, outputPath);
+      if (downloadedFile) {
+        const actualOutputPath = join(VOD_STORAGE, downloadedFile);
+        const { renameSync } = await import('fs');
+        renameSync(actualOutputPath, outputPath);
+        console.log(`Renamed ${downloadedFile} to ${outputFilename}`);
+      } else {
+        throw new Error(
+          `Downloaded file not found at ${outputPath}. Files in directory: ${files.join(', ')}`
+        );
+      }
     }
 
     db.prepare(

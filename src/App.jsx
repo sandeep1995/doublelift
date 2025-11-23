@@ -71,6 +71,24 @@ function App() {
         return `Scan complete: ${data.newVods} new VODs found`;
       case 'download_start':
         return `Downloading: ${data.title}`;
+      case 'download_progress':
+        const parts = [];
+        if (data.vodsCount !== null && data.totalVods !== null) {
+          parts.push(`Downloaded ${data.vodsCount}/${data.totalVods} VODs`);
+        }
+        if (data.percent !== null) {
+          parts.push(`${data.percent}%`);
+        }
+        if (data.totalSize) {
+          parts.push(`of ${data.totalSize}`);
+        }
+        if (data.speed) {
+          parts.push(`at ${data.speed}`);
+        }
+        if (data.eta) {
+          parts.push(`ETA ${data.eta}`);
+        }
+        return parts.length > 0 ? parts.join(' ') : (data.logLine || `Downloading ${data.percent || 0}%`);
       case 'download_complete':
         return `Download complete: ${data.vodId}`;
       case 'process_start':

@@ -67,4 +67,13 @@ router.post('/:id/process', async (req, res) => {
   }
 });
 
+router.post('/queue/restart', async (req, res) => {
+  try {
+    const result = await downloadQueue.restartQueue();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
