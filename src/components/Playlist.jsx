@@ -1,41 +1,17 @@
 import { useState, useEffect } from 'react';
+import { useServerEvents } from '../state/useServerEvents';
 import './Playlist.css';
 
 function Playlist() {
-  const [playlist, setPlaylist] = useState([]);
+  const { playlist, refreshPlaylist } = useServerEvents();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    fetchPlaylist();
-    const interval = setInterval(fetchPlaylist, 3000);
-
-    // Listen for playlist updates via WebSocket
-    const websocket = new WebSocket(`ws://${window.location.hostname}:3000`);
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'playlist_updated') {
-        fetchPlaylist();
-      }
-    };
-
-    return () => {
-      clearInterval(interval);
-      websocket.close();
-    };
-  }, []);
-
-  const fetchPlaylist = async () => {
-    try {
-      const response = await fetch('/api/stream/playlist');
-      const data = await response.json();
-      setPlaylist(data);
-    } catch (error) {
-      console.error('Failed to fetch playlist:', error);
-    } finally {
+    if (playlist.length >= 0) {
       setLoading(false);
     }
-  };
+  }, [playlist]);
 
   const handleUpdatePlaylist = async () => {
     setUpdating(true);
@@ -45,14 +21,13 @@ function Playlist() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchPlaylist();
-        alert('Playlist updated! All processed VODs have been added.');
+        await refreshPlaylist();
       } else {
-        alert('Failed to update playlist: ' + (result.error || result.message));
+        throw new Error(result.error || result.message || 'Failed to update playlist');
       }
     } catch (error) {
       console.error('Failed to update playlist:', error);
-      alert('Failed to update playlist: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setUpdating(false);
     }

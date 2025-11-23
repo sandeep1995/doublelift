@@ -1,128 +1,26 @@
 import { useState, useEffect } from 'react';
+import { useServerEvents } from '../state/useServerEvents';
 import './VodList.css';
 
 function VodList() {
-  const [vods, setVods] = useState([]);
+  const {
+    vods,
+    queueStatus,
+    playlistVodIds,
+    downloadProgress,
+    processProgress,
+    refreshVods,
+    refreshPlaylist,
+    refreshQueueStatus,
+  } = useServerEvents();
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState({});
-  const [downloadProgress, setDownloadProgress] = useState({});
-  const [processProgress, setProcessProgress] = useState({});
-  const [queueStatus, setQueueStatus] = useState(null);
-  const [playlistVodIds, setPlaylistVodIds] = useState(new Set());
 
   useEffect(() => {
-    fetchVods();
-    fetchQueueStatus();
-    fetchPlaylistVodIds();
-    const interval = setInterval(() => {
-      fetchVods();
-      fetchQueueStatus();
-      fetchPlaylistVodIds();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchPlaylistVodIds = async () => {
-    try {
-      const response = await fetch('/api/stream/playlist');
-      const data = await response.json();
-      const ids = new Set(data.map((item) => item.vod_id));
-      setPlaylistVodIds(ids);
-    } catch (error) {
-      console.error('Failed to fetch playlist:', error);
-    }
-  };
-
-  const fetchQueueStatus = async () => {
-    try {
-      const response = await fetch('/api/vods/queue/status');
-      const data = await response.json();
-      setQueueStatus(data);
-    } catch (error) {
-      console.error('Failed to fetch queue status:', error);
-    }
-  };
-
-  useEffect(() => {
-    const websocket = new WebSocket(`ws://${window.location.hostname}:3000`);
-
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'download_progress' && data.vodId) {
-        setDownloadProgress((prev) => ({
-          ...prev,
-          [data.vodId]: {
-            percent: data.percent,
-            vodsCount: data.vodsCount,
-            totalVods: data.totalVods,
-            totalSize: data.totalSize,
-            speed: data.speed,
-            eta: data.eta,
-            logLine: data.logLine,
-          },
-        }));
-      }
-      if (data.type === 'process_start' && data.vodId) {
-        setProcessProgress((prev) => ({
-          ...prev,
-          [data.vodId]: {
-            message: 'Starting processing...',
-            stage: 'starting',
-          },
-        }));
-      }
-      if (data.type === 'process_progress' && data.vodId) {
-        setProcessProgress((prev) => ({
-          ...prev,
-          [data.vodId]: {
-            message: data.message,
-            stage: data.stage,
-            segmentsFound: data.segmentsFound,
-            latestSegment: data.latestSegment,
-            segment: data.segment,
-            total: data.total,
-          },
-        }));
-      }
-      if (data.type === 'process_complete' && data.vodId) {
-        setProcessProgress((prev) => {
-          const newState = { ...prev };
-          delete newState[data.vodId];
-          return newState;
-        });
-      }
-      if (data.type === 'process_error' && data.vodId) {
-        setProcessProgress((prev) => {
-          const newState = { ...prev };
-          delete newState[data.vodId];
-          return newState;
-        });
-      }
-    };
-
-    websocket.onclose = () => {
-      setTimeout(() => {
-        const newWs = new WebSocket(`ws://${window.location.hostname}:3000`);
-        newWs.onmessage = websocket.onmessage;
-      }, 5000);
-    };
-
-    return () => {
-      websocket.close();
-    };
-  }, []);
-
-  const fetchVods = async () => {
-    try {
-      const response = await fetch('/api/vods');
-      const data = await response.json();
-      setVods(data);
-    } catch (error) {
-      console.error('Failed to fetch VODs:', error);
-    } finally {
+    if (vods.length > 0 || queueStatus !== null) {
       setLoading(false);
     }
-  };
+  }, [vods, queueStatus]);
 
   const handleDownload = async (vodId) => {
     setActionInProgress((prev) => ({ ...prev, [vodId]: 'downloading' }));
@@ -132,11 +30,15 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success || result.message) {
-        await fetchVods();
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to queue download'
+        );
       }
     } catch (error) {
       console.error('Failed to queue download:', error);
-      alert('Failed to queue download: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -154,11 +56,15 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success || result.message) {
-        await fetchVods();
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to retry download'
+        );
       }
     } catch (error) {
       console.error('Failed to retry download:', error);
-      alert('Failed to retry download: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -175,12 +81,16 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success) {
-        alert('Download queue restarted');
-        await fetchVods();
+        await refreshVods();
+        await refreshQueueStatus();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to restart queue'
+        );
       }
     } catch (error) {
       console.error('Failed to restart queue:', error);
-      alert('Failed to restart queue: ' + error.message);
+      // Error will be shown via notifications from websocket
     }
   };
 
@@ -192,14 +102,16 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchPlaylistVodIds();
-        await fetchVods();
+        await refreshPlaylist();
+        await refreshVods();
       } else {
-        alert('Failed to add to playlist: ' + (result.error || result.message));
+        throw new Error(
+          result.error || result.message || 'Failed to add to playlist'
+        );
       }
     } catch (error) {
       console.error('Failed to add to playlist:', error);
-      alert('Failed to add to playlist: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -217,16 +129,16 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchPlaylistVodIds();
-        await fetchVods();
+        await refreshPlaylist();
+        await refreshVods();
       } else {
-        alert(
-          'Failed to remove from playlist: ' + (result.error || result.message)
+        throw new Error(
+          result.error || result.message || 'Failed to remove from playlist'
         );
       }
     } catch (error) {
       console.error('Failed to remove from playlist:', error);
-      alert('Failed to remove from playlist: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -244,11 +156,15 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchVods();
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to process VOD'
+        );
       }
     } catch (error) {
       console.error('Failed to process VOD:', error);
-      alert('Failed to process VOD: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -266,13 +182,15 @@ function VodList() {
       });
       const result = await response.json();
       if (result.success) {
-        await fetchVods();
+        await refreshVods();
       } else {
-        alert('Failed to reprocess VOD: ' + (result.error || 'Unknown error'));
+        throw new Error(
+          result.error || result.message || 'Failed to reprocess VOD'
+        );
       }
     } catch (error) {
       console.error('Failed to reprocess VOD:', error);
-      alert('Failed to reprocess VOD: ' + error.message);
+      // Error will be shown via notifications from websocket
     } finally {
       setActionInProgress((prev) => {
         const newState = { ...prev };
@@ -303,6 +221,8 @@ function VodList() {
         const percent = progress?.percent ?? vod.download_progress ?? 0;
         return <span className='badge badge-info'>Downloading {percent}%</span>;
       }
+      case 'paused':
+        return <span className='badge badge-warning'>Paused</span>;
       case 'queued':
         return <span className='badge badge-warning'>Queued</span>;
       case 'failed':
@@ -437,6 +357,84 @@ function VodList() {
     }
   };
 
+  const handlePause = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'pausing' }));
+    try {
+      const response = await fetch(`/api/vods/${vodId}/pause`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to pause download'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to pause download:', error);
+      // Error will be shown via notifications from websocket
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
+  const handleResume = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'resuming' }));
+    try {
+      const response = await fetch(`/api/vods/${vodId}/resume`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to resume download'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to resume download:', error);
+      // Error will be shown via notifications from websocket
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
+  const handleStop = async (vodId) => {
+    setActionInProgress((prev) => ({ ...prev, [vodId]: 'stopping' }));
+    try {
+      const response = await fetch(`/api/vods/${vodId}/stop`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        await refreshVods();
+      } else {
+        throw new Error(
+          result.error || result.message || 'Failed to stop download'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to stop download:', error);
+      // Error will be shown via notifications from websocket
+    } finally {
+      setActionInProgress((prev) => {
+        const newState = { ...prev };
+        delete newState[vodId];
+        return newState;
+      });
+    }
+  };
+
   const renderActions = (vod) => {
     const actions = [];
     const status = vod.download_status || 'pending';
@@ -451,6 +449,52 @@ function VodList() {
           disabled={!!inProgress}
         >
           {inProgress === 'downloading' ? 'Queueing...' : 'Download'}
+        </button>
+      );
+    }
+
+    if (status === 'downloading') {
+      actions.push(
+        <button
+          key='pause'
+          className='action-btn btn-warning'
+          onClick={() => handlePause(vod.id)}
+          disabled={!!inProgress}
+        >
+          {inProgress === 'pausing' ? 'Pausing...' : 'Pause'}
+        </button>
+      );
+      actions.push(
+        <button
+          key='stop'
+          className='action-btn btn-danger'
+          onClick={() => handleStop(vod.id)}
+          disabled={!!inProgress}
+        >
+          {inProgress === 'stopping' ? 'Stopping...' : 'Stop'}
+        </button>
+      );
+    }
+
+    if (status === 'paused') {
+      actions.push(
+        <button
+          key='resume'
+          className='action-btn btn-success'
+          onClick={() => handleResume(vod.id)}
+          disabled={!!inProgress}
+        >
+          {inProgress === 'resuming' ? 'Resuming...' : 'Resume'}
+        </button>
+      );
+      actions.push(
+        <button
+          key='stop'
+          className='action-btn btn-danger'
+          onClick={() => handleStop(vod.id)}
+          disabled={!!inProgress}
+        >
+          {inProgress === 'stopping' ? 'Stopping...' : 'Stop'}
         </button>
       );
     }
@@ -576,8 +620,32 @@ function VodList() {
               {getProcessProgressDetails(vod)}
               {vod.error_message && (
                 <div className='vod-error'>
-                  Error: {vod.error_message}
-                  {vod.retry_count > 0 && ` (Retry ${vod.retry_count})`}
+                  <span>
+                    Error: {vod.error_message}
+                    {vod.retry_count > 0 && ` (Retry ${vod.retry_count})`}
+                  </span>
+                  <button
+                    className='vod-error-clear'
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(
+                          `/api/vods/${vod.id}/clear-error`,
+                          {
+                            method: 'POST',
+                          }
+                        );
+                        const result = await response.json();
+                        if (result.success) {
+                          await refreshVods();
+                        }
+                      } catch (error) {
+                        console.error('Failed to clear error:', error);
+                      }
+                    }}
+                    title='Clear error message'
+                  >
+                    ×
+                  </button>
                 </div>
               )}
               {vod.muted_segments &&

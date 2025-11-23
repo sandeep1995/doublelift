@@ -97,6 +97,13 @@ class StreamManager {
       startIndex: this.currentIndex,
       resumed: resume,
     });
+    
+    // Broadcast unified stream status update
+    const status = this.getStatus();
+    broadcastStatus({
+      type: 'stream_status_update',
+      ...status,
+    });
 
     this.streamNext();
 
@@ -142,6 +149,13 @@ class StreamManager {
       type: 'stream_stop',
       lastPosition: this.currentIndex + 1,
       lastVodId: currentVodId,
+    });
+    
+    // Broadcast unified stream status update
+    const status = this.getStatus();
+    broadcastStatus({
+      type: 'stream_status_update',
+      ...status,
     });
 
     return {
@@ -237,6 +251,9 @@ class StreamManager {
     ).run(currentVod.vod_id, vodStartTime);
 
     console.log(`Streaming: ${currentVod.title}`);
+    
+    // Broadcast unified stream status update
+    const status = this.getStatus();
     broadcastStatus({
       type: 'stream_vod_change',
       vodId: currentVod.vod_id,
@@ -245,6 +262,12 @@ class StreamManager {
       total: this.playlist.length,
       duration: currentVod.duration,
       startedAt: vodStartTime,
+    });
+    
+    // Also broadcast full status for state sync
+    broadcastStatus({
+      type: 'stream_status_update',
+      ...status,
     });
 
     this.currentStreamProcess = ffmpeg(currentVod.processed_file_path)
@@ -304,6 +327,20 @@ class StreamManager {
 
         console.log(`Finished streaming: ${currentVod.title}`);
         this.currentIndex++;
+        
+        // Persist progress update before moving to next
+        const db = getDatabase();
+        db.prepare(
+          'UPDATE stream_state SET current_vod_id = ?, current_vod_started_at = NULL WHERE id = 1'
+        ).run(null);
+        
+        // Broadcast unified stream status update
+        const status = this.getStatus();
+        broadcastStatus({
+          type: 'stream_status_update',
+          ...status,
+        });
+        
         setTimeout(() => this.streamNext(), 1000);
       })
       .on('error', (err) => {

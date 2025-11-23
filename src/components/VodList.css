@@ -161,6 +161,38 @@
   color: #991b1b;
   font-size: 0.85rem;
   font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vod-error span {
+  flex: 1;
+}
+
+.vod-error-clear {
+  background: none;
+  border: none;
+  color: #991b1b;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.vod-error-clear:hover {
+  background: rgba(153, 27, 27, 0.1);
+  opacity: 1;
 }
 
 .vod-progress-details {

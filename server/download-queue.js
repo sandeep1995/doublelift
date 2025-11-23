@@ -2,10 +2,26 @@ import { getDatabase } from './database.js';
 import { downloadVod, processVod } from './vod-processor.js';
 import { broadcastStatus } from './websocket.js';
 
+// Import downloadVod to access activeProcesses
+import * as vodProcessor from './vod-processor.js';
+
+let downloadQueueInstance = null;
+
+function broadcastQueueStatus() {
+  if (!downloadQueueInstance) return;
+  const status = downloadQueueInstance.getQueueStatus();
+  broadcastStatus({
+    type: 'queue_status_update',
+    ...status,
+  });
+}
+
 class DownloadQueue {
   constructor() {
     this.isProcessing = false;
     this.currentDownload = null;
+    this.currentDownloadProcess = null;
+    this.isPaused = false;
     this.maxRetries = 3;
   }
 
@@ -85,6 +101,7 @@ class DownloadQueue {
     ).run('queued', new Date().toISOString(), vodId);
 
     broadcastStatus({ type: 'vod_queued', vodId });
+    broadcastQueueStatus();
 
     this.processQueue();
 
@@ -97,20 +114,28 @@ class DownloadQueue {
     }
 
     this.isProcessing = true;
+    this.isPaused = false;
 
     try {
       while (true) {
+        // Check if paused
+        if (this.isPaused) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+
         const db = getDatabase();
         const nextVod = db
           .prepare(
             `SELECT * FROM vods 
-             WHERE download_status IN ('queued', 'failed') 
+             WHERE download_status IN ('queued', 'failed', 'paused') 
              AND downloaded = 0 
              AND retry_count < ?
              ORDER BY 
                CASE download_status 
                  WHEN 'queued' THEN 0 
-                 WHEN 'failed' THEN 1 
+                 WHEN 'paused' THEN 1
+                 WHEN 'failed' THEN 2 
                END,
                created_at DESC 
              LIMIT 1`
@@ -127,8 +152,21 @@ class DownloadQueue {
           db.prepare(
             'UPDATE vods SET download_status = ?, last_attempt_at = ? WHERE id = ?'
           ).run('downloading', new Date().toISOString(), nextVod.id);
+          
+          broadcastQueueStatus();
 
-          await downloadVod(nextVod.id);
+          const downloadPromise = downloadVod(nextVod.id);
+          
+          // Store process reference once it's available
+          const checkProcess = setInterval(() => {
+            if (vodProcessor.downloadVod.activeProcesses && vodProcessor.downloadVod.activeProcesses.has(nextVod.id)) {
+              this.currentDownloadProcess = vodProcessor.downloadVod.activeProcesses.get(nextVod.id);
+              clearInterval(checkProcess);
+            }
+          }, 100);
+          
+          await downloadPromise;
+          clearInterval(checkProcess);
 
           db.prepare(
             'UPDATE vods SET download_status = ?, retry_count = 0, error_message = NULL WHERE id = ?'
@@ -139,7 +177,23 @@ class DownloadQueue {
             vodId: nextVod.id,
             title: nextVod.title,
           });
+          broadcastQueueStatus();
         } catch (error) {
+          // Check if error is due to cancellation/pause/stop
+          if (error.message && (
+            error.message.includes('Download cancelled') ||
+            error.message.includes('Download paused') ||
+            error.message.includes('Download stopped')
+          )) {
+            // Status already updated by pause/stop methods
+            // Check current status to avoid overwriting
+            const currentVod = db.prepare('SELECT * FROM vods WHERE id = ?').get(nextVod.id);
+            if (currentVod && (currentVod.download_status === 'paused' || currentVod.download_status === 'cancelled')) {
+              this.currentDownloadProcess = null;
+              continue;
+            }
+          }
+
           console.error(`Failed to download VOD ${nextVod.id}:`, error);
 
           const retryCount = nextVod.retry_count + 1;
@@ -163,6 +217,7 @@ class DownloadQueue {
             retryCount,
             willRetry: retryCount < this.maxRetries,
           });
+          broadcastQueueStatus();
 
           if (retryCount < this.maxRetries) {
             await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -170,9 +225,11 @@ class DownloadQueue {
         }
 
         this.currentDownload = null;
+        this.currentDownloadProcess = null;
       }
     } finally {
       this.isProcessing = false;
+      this.currentDownloadProcess = null;
     }
   }
 
@@ -190,36 +247,175 @@ class DownloadQueue {
     ).run('queued', new Date().toISOString(), vodId);
 
     broadcastStatus({ type: 'vod_retry', vodId });
+    broadcastQueueStatus();
     this.processQueue();
 
     return { success: true, message: 'VOD queued for retry' };
   }
 
   async restartQueue() {
+    const db = getDatabase();
+    
+    // Clear error messages from paused/cancelled downloads
+    db.prepare(
+      `UPDATE vods 
+       SET error_message = NULL 
+       WHERE download_status IN ('paused', 'cancelled') 
+       AND error_message IS NOT NULL`
+    ).run();
+
+    // Clear paused flag if set
+    this.isPaused = false;
+
     // Manually trigger queue processing
+    broadcastQueueStatus();
     this.processQueue();
     return { success: true, message: 'Download queue processing started' };
   }
 
-  async cancelDownload(vodId) {
+  async pauseDownload(vodId) {
     const db = getDatabase();
     const vod = db.prepare('SELECT * FROM vods WHERE id = ?').get(vodId);
 
-    if (
-      vod &&
-      vod.download_status === 'downloading' &&
-      this.currentDownload === vodId
-    ) {
-      return { success: false, message: 'Cannot cancel download in progress' };
+    if (!vod) {
+      throw new Error(`VOD ${vodId} not found`);
     }
 
+    if (vod.download_status !== 'downloading') {
+      return { success: false, message: 'VOD is not currently downloading' };
+    }
+
+    if (this.currentDownload !== vodId) {
+      return { success: false, message: 'VOD is not the current download' };
+    }
+
+    // Update database status first to prevent error handling
     db.prepare(
-      'UPDATE vods SET download_status = ?, error_message = ? WHERE id = ?'
-    ).run('cancelled', 'Cancelled by user', vodId);
+      'UPDATE vods SET download_status = ?, error_message = NULL WHERE id = ?'
+    ).run('paused', vodId);
 
-    broadcastStatus({ type: 'download_cancelled', vodId });
+    // Kill the download process
+    let processKilled = false;
+    if (this.currentDownloadProcess) {
+      try {
+        this.currentDownloadProcess.kill('SIGTERM');
+        processKilled = true;
+      } catch (error) {
+        console.error(`Error killing download process for VOD ${vodId}:`, error);
+      }
+    }
 
-    return { success: true, message: 'Download cancelled' };
+    // Also try to kill via activeProcesses map
+    if (!processKilled && vodProcessor.downloadVod.activeProcesses) {
+      const process = vodProcessor.downloadVod.activeProcesses.get(vodId);
+      if (process) {
+        try {
+          process.kill('SIGTERM');
+          processKilled = true;
+        } catch (error) {
+          console.error(`Error killing download process for VOD ${vodId}:`, error);
+        }
+      }
+    }
+
+    this.currentDownloadProcess = null;
+
+    // Set paused flag to stop queue processing
+    this.isPaused = true;
+
+    broadcastStatus({ type: 'download_paused', vodId, title: vod.title });
+    broadcastQueueStatus();
+
+    // Clear current download so queue can continue with other items
+    this.currentDownload = null;
+
+    return { success: true, message: 'Download paused' };
+  }
+
+  async resumeDownload(vodId) {
+    const db = getDatabase();
+    const vod = db.prepare('SELECT * FROM vods WHERE id = ?').get(vodId);
+
+    if (!vod) {
+      throw new Error(`VOD ${vodId} not found`);
+    }
+
+    if (vod.download_status !== 'paused') {
+      return { success: false, message: 'VOD is not paused' };
+    }
+
+    // Change status back to queued
+    db.prepare(
+      'UPDATE vods SET download_status = ?, error_message = NULL WHERE id = ?'
+    ).run('queued', vodId);
+
+    broadcastStatus({ type: 'download_resumed', vodId, title: vod.title });
+    broadcastQueueStatus();
+
+    // Resume queue processing if it was paused
+    if (this.isPaused) {
+      this.isPaused = false;
+    }
+
+    // Trigger queue processing
+    this.processQueue();
+
+    return { success: true, message: 'Download resumed' };
+  }
+
+  async stopDownload(vodId) {
+    const db = getDatabase();
+    const vod = db.prepare('SELECT * FROM vods WHERE id = ?').get(vodId);
+
+    if (!vod) {
+      throw new Error(`VOD ${vodId} not found`);
+    }
+
+    // Update database status first to prevent error handling
+    db.prepare(
+      'UPDATE vods SET download_status = ?, error_message = NULL WHERE id = ?'
+    ).run('cancelled', vodId);
+
+    if ((vod.download_status === 'downloading' || vod.download_status === 'paused') && this.currentDownload === vodId) {
+      // Kill the download process
+      let processKilled = false;
+      if (this.currentDownloadProcess) {
+        try {
+          this.currentDownloadProcess.kill('SIGTERM');
+          processKilled = true;
+        } catch (error) {
+          console.error(`Error killing download process for VOD ${vodId}:`, error);
+        }
+      }
+
+      // Also try to kill via activeProcesses map
+      if (!processKilled && vodProcessor.downloadVod.activeProcesses) {
+        const process = vodProcessor.downloadVod.activeProcesses.get(vodId);
+        if (process) {
+          try {
+            process.kill('SIGTERM');
+          } catch (error) {
+            console.error(`Error killing download process for VOD ${vodId}:`, error);
+          }
+        }
+      }
+
+      this.currentDownloadProcess = null;
+
+      // Clear paused flag if set
+      this.isPaused = false;
+      this.currentDownload = null;
+    }
+
+    broadcastStatus({ type: 'download_stopped', vodId, title: vod.title });
+    broadcastQueueStatus();
+
+    return { success: true, message: 'Download stopped' };
+  }
+
+  async cancelDownload(vodId) {
+    // Alias for stopDownload for backward compatibility
+    return this.stopDownload(vodId);
   }
 
   getQueueStatus() {
@@ -248,3 +444,4 @@ class DownloadQueue {
 }
 
 export const downloadQueue = new DownloadQueue();
+downloadQueueInstance = downloadQueue;

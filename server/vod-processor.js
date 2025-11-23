@@ -20,6 +20,9 @@ if (!existsSync(PROCESSED_STORAGE))
   mkdirSync(PROCESSED_STORAGE, { recursive: true });
 if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
 
+// Store active download processes
+downloadVod.activeProcesses = new Map();
+
 export async function downloadVod(vodId) {
   const db = getDatabase();
   const vod = db.prepare('SELECT * FROM vods WHERE id = ?').get(vodId);
@@ -73,7 +76,7 @@ export async function downloadVod(vodId) {
       args.push('--rate-limit', DOWNLOAD_RATE_LIMIT);
     }
 
-    await new Promise((resolve, reject) => {
+    const downloadPromise = new Promise((resolve, reject) => {
       let output = '';
       let lastPercent = 0;
       let errorOutput = '';
@@ -130,6 +133,9 @@ export async function downloadVod(vodId) {
         env: { ...process.env },
       });
 
+      // Store process reference for cancellation immediately
+      downloadVod.activeProcesses.set(vodId, twitchDl);
+
       const handleProgressData = (dataStr, isStderr = false) => {
         const progress = parseProgress(dataStr);
 
@@ -179,9 +185,17 @@ export async function downloadVod(vodId) {
       });
 
       twitchDl.on('close', (code) => {
+        // Clean up process reference
+        if (downloadVod.activeProcesses) {
+          downloadVod.activeProcesses.delete(vodId);
+        }
+
         if (code === 0) {
           console.log(`Downloaded VOD ${vodId} using twitch-dl`);
           resolve();
+        } else if (code === 143 || code === 15) {
+          // SIGTERM (143) or SIGTERM (15) - process was killed
+          reject(new Error('Download cancelled'));
         } else {
           // Check if file exists despite non-zero exit code (might be skip-existing)
           if (existsSync(outputPath)) {
@@ -200,6 +214,11 @@ export async function downloadVod(vodId) {
       });
 
       twitchDl.on('error', (err) => {
+        // Clean up process reference
+        if (downloadVod.activeProcesses) {
+          downloadVod.activeProcesses.delete(vodId);
+        }
+
         if (err.code === 'ENOENT') {
           reject(
             new Error(
@@ -210,7 +229,10 @@ export async function downloadVod(vodId) {
           reject(err);
         }
       });
+
     });
+
+    await downloadPromise;
 
     // Verify the file was downloaded
     if (!existsSync(outputPath)) {

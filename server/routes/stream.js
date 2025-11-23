@@ -12,6 +12,7 @@ import {
   removeVodFromPlaylist,
   isVodInPlaylist,
 } from '../playlist-manager.js';
+import { broadcastStatus } from '../websocket.js';
 
 const router = express.Router();
 
@@ -21,7 +22,13 @@ router.get('/status', (req, res) => {
     const status = getStreamStatus();
     res.json(status);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'GET /api/stream/status',
+      error: error.message,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -36,7 +43,13 @@ router.post('/start', async (req, res) => {
     });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/start',
+      error: error.message,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -45,7 +58,13 @@ router.post('/stop', async (req, res) => {
     const result = await stopStream();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/stop',
+      error: error.message,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -54,7 +73,13 @@ router.post('/skip-next', async (req, res) => {
     const result = await streamManager.skipToNext();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/skip-next',
+      error: error.message,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -63,7 +88,14 @@ router.post('/skip-to/:vodId', async (req, res) => {
     const result = await streamManager.skipToVod(req.params.vodId);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/skip-to/:vodId',
+      error: error.message,
+      vodId: req.params.vodId,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -72,7 +104,13 @@ router.post('/reload-playlist', async (req, res) => {
     const result = await streamManager.reloadPlaylist();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/reload-playlist',
+      error: error.message,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -111,7 +149,14 @@ router.post('/playlist/:vodId/add', async (req, res) => {
     }
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/playlist/:vodId/add',
+      error: error.message,
+      vodId: req.params.vodId,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -124,7 +169,14 @@ router.post('/playlist/:vodId/remove', async (req, res) => {
     }
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorResponse = { success: false, error: error.message };
+    broadcastStatus({
+      type: 'api_error',
+      endpoint: 'POST /api/stream/playlist/:vodId/remove',
+      error: error.message,
+      vodId: req.params.vodId,
+    });
+    res.status(500).json(errorResponse);
   }
 });
 

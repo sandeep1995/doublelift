@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useServerEvents } from '../state/useServerEvents';
 import './StreamControls.css';
 
 function StreamControls({ status, onUpdate }) {
+  const { refreshStatus } = useServerEvents();
   const [loading, setLoading] = useState(false);
   const [streamInfo, setStreamInfo] = useState(status);
   const [showStartDialog, setShowStartDialog] = useState(false);
@@ -53,10 +55,11 @@ function StreamControls({ status, onUpdate }) {
       if (data.success) {
         onUpdate();
       } else {
-        alert(data.message);
+        throw new Error(data.error || data.message || 'Failed to start stream');
       }
     } catch (error) {
-      alert('Failed to start stream: ' + error.message);
+      console.error('Failed to start stream:', error);
+      // Error will be shown via notifications from websocket
     } finally {
       setLoading(false);
     }
@@ -78,10 +81,11 @@ function StreamControls({ status, onUpdate }) {
       if (data.success) {
         onUpdate();
       } else {
-        alert(data.message);
+        throw new Error(data.error || data.message || 'Failed to stop stream');
       }
     } catch (error) {
-      alert('Failed to stop stream: ' + error.message);
+      console.error('Failed to stop stream:', error);
+      // Error will be shown via notifications from websocket
     } finally {
       setLoading(false);
     }
@@ -97,10 +101,11 @@ function StreamControls({ status, onUpdate }) {
       if (data.success) {
         onUpdate();
       } else {
-        alert(data.message);
+        throw new Error(data.error || data.message || 'Failed to skip to next');
       }
     } catch (error) {
-      alert('Failed to skip to next: ' + error.message);
+      console.error('Failed to skip to next:', error);
+      // Error will be shown via notifications from websocket
     } finally {
       setLoading(false);
     }
@@ -115,12 +120,12 @@ function StreamControls({ status, onUpdate }) {
       const data = await response.json();
       if (data.success) {
         onUpdate();
-        alert('Playlist reloaded in stream');
       } else {
-        alert(data.message);
+        throw new Error(data.error || data.message || 'Failed to reload playlist');
       }
     } catch (error) {
-      alert('Failed to reload playlist: ' + error.message);
+      console.error('Failed to reload playlist:', error);
+      // Error will be shown via notifications from websocket
     } finally {
       setLoading(false);
     }
@@ -132,11 +137,13 @@ function StreamControls({ status, onUpdate }) {
       const response = await fetch('/api/status/scan', { method: 'POST' });
       const data = await response.json();
       if (data.success) {
-        alert('VOD scan started');
         onUpdate();
+      } else {
+        throw new Error(data.error || data.message || 'Failed to start scan');
       }
     } catch (error) {
-      alert('Failed to start scan: ' + error.message);
+      console.error('Failed to start scan:', error);
+      // Error will be shown via notifications from websocket
     } finally {
       setLoading(false);
     }
