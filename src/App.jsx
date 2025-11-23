@@ -45,11 +45,21 @@ function App() {
         [
           'stream_start',
           'stream_stop',
+          'stream_vod_change',
           'scan_complete',
           'playlist_updated',
         ].includes(data.type)
       ) {
         fetchStatus();
+      }
+
+      // Update status immediately for stream progress
+      if (data.type === 'stream_progress' && status) {
+        setStatus((prev) => ({
+          ...prev,
+          streamElapsed: data.streamElapsed || prev.streamElapsed,
+          vodElapsed: data.vodElapsed || prev.vodElapsed,
+        }));
       }
     };
 

@@ -75,11 +75,34 @@ export function initDatabase() {
       id INTEGER PRIMARY KEY,
       is_streaming INTEGER DEFAULT 0,
       current_vod_id TEXT,
+      stream_started_at TEXT,
+      current_vod_started_at TEXT,
       playlist_updated_at TEXT,
       last_scan_at TEXT,
       next_scan_at TEXT
     )
   `);
+
+  // Migrate existing tables - add new columns if they don't exist
+  const streamColumns = db.pragma('table_info(stream_state)');
+  const streamColumnNames = streamColumns.map((col) => col.name);
+
+  if (!streamColumnNames.includes('stream_started_at')) {
+    db.exec(`ALTER TABLE stream_state ADD COLUMN stream_started_at TEXT`);
+    console.log('Added stream_started_at column');
+  }
+  if (!streamColumnNames.includes('current_vod_started_at')) {
+    db.exec(`ALTER TABLE stream_state ADD COLUMN current_vod_started_at TEXT`);
+    console.log('Added current_vod_started_at column');
+  }
+  if (!streamColumnNames.includes('last_vod_index')) {
+    db.exec(`ALTER TABLE stream_state ADD COLUMN last_vod_index INTEGER`);
+    console.log('Added last_vod_index column');
+  }
+  if (!streamColumnNames.includes('last_vod_id')) {
+    db.exec(`ALTER TABLE stream_state ADD COLUMN last_vod_id TEXT`);
+    console.log('Added last_vod_id column');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS playlist (

@@ -1,12 +1,13 @@
 import express from 'express';
 import { getDatabase } from '../database.js';
 import { scanAndProcessVods } from '../scheduler.js';
+import { getStreamStatus } from '../stream-manager.js';
 
 const router = express.Router();
 
 router.get('/', (req, res) => {
   const db = getDatabase();
-  const state = db.prepare('SELECT * FROM stream_state WHERE id = 1').get();
+  const streamStatus = getStreamStatus();
 
   const totalVods = db
     .prepare('SELECT COUNT(*) as count FROM vods')
@@ -22,10 +23,9 @@ router.get('/', (req, res) => {
     .get().count;
 
   res.json({
-    isStreaming: Boolean(state.is_streaming),
-    currentVodId: state.current_vod_id,
-    lastScan: state.last_scan_at,
-    playlistUpdated: state.playlist_updated_at,
+    ...streamStatus,
+    lastScan: streamStatus.lastScan,
+    playlistUpdated: streamStatus.playlistUpdated,
     stats: {
       totalVods,
       downloadedVods,

@@ -56,6 +56,19 @@ export async function updatePlaylist() {
     }
   }
 
+  // Check if last VOD is still in new playlist, if not clear last position
+  const state = db.prepare('SELECT * FROM stream_state WHERE id = 1').get();
+  if (state && state.last_vod_id) {
+    const lastVodStillExists = processedVods.some(
+      (v) => v.id === state.last_vod_id
+    );
+    if (!lastVodStillExists) {
+      db.prepare(
+        'UPDATE stream_state SET last_vod_id = NULL, last_vod_index = NULL WHERE id = 1'
+      ).run();
+    }
+  }
+
   db.prepare(
     'UPDATE stream_state SET playlist_updated_at = ? WHERE id = 1'
   ).run(new Date().toISOString());

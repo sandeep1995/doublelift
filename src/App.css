@@ -100,6 +100,24 @@
   background: #4c4c52;
 }
 
+.button-warning {
+  background: #ffa500;
+  color: #000;
+}
+
+.button-warning:hover {
+  background: #e69500;
+}
+
+.button-info {
+  background: #1e90ff;
+  color: #fff;
+}
+
+.button-info:hover {
+  background: #1873cc;
+}
+
 .status-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;

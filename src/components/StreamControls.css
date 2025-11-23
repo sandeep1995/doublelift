@@ -10,7 +10,7 @@
 
 .control-buttons .button {
   flex: 1;
-  min-width: 150px;
+  min-width: 120px;
 }
 
 .current-stream-info {
@@ -33,4 +33,172 @@
   color: #00f593;
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+.stream-info-panel {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #1f1f23 0%, #2c2c34 100%);
+  border-radius: 6px;
+  border: 2px solid #9147ff;
+  box-shadow: 0 0 20px rgba(145, 71, 255, 0.3);
+}
+
+.stream-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2c2c34;
+}
+
+.stream-status-indicator {
+  color: #ff4444;
+  font-weight: 700;
+  font-size: 1rem;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.stream-elapsed {
+  color: #00f593;
+  font-weight: 600;
+  font-size: 1rem;
+  font-family: 'Courier New', monospace;
+}
+
+.stream-info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.stream-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stream-info-label {
+  color: #adadb8;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.stream-info-value {
+  color: #efeff1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: right;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.start-dialog {
+  background: #18181b;
+  border-radius: 8px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  border: 2px solid #9147ff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.start-dialog h3 {
+  margin: 0 0 1rem 0;
+  color: #efeff1;
+  font-size: 1.5rem;
+}
+
+.dialog-description {
+  color: #adadb8;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.start-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.start-options .button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 1rem;
+}
+
+.option-detail {
+  font-size: 0.85rem;
+  color: #adadb8;
+  margin-top: 0.25rem;
+  font-weight: 400;
+}
+
+.last-stream-info {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #1f1f23;
+  border-radius: 6px;
+  border: 1px solid #2c2c34;
+}
+
+.last-stream-header {
+  margin-bottom: 0.75rem;
+}
+
+.last-stream-label {
+  color: #adadb8;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.last-stream-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.last-stream-title {
+  color: #efeff1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.last-stream-position {
+  color: #00f593;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
