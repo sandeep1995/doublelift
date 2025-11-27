@@ -1,8 +1,8 @@
 import { getDatabase } from './database.js';
 import { downloadVod, processVod } from './vod-processor.js';
 import { broadcastStatus } from './websocket.js';
+import { updatePlaylist } from './playlist-manager.js';
 
-// Import downloadVod to access activeProcesses
 import * as vodProcessor from './vod-processor.js';
 
 let downloadQueueInstance = null;
@@ -23,6 +23,8 @@ class DownloadQueue {
     this.currentDownloadProcess = null;
     this.isPaused = false;
     this.maxRetries = 3;
+    this.autoProcess = true;
+    this.autoAddToPlaylist = true;
   }
 
   resetStuckDownloads() {
@@ -178,6 +180,20 @@ class DownloadQueue {
             title: nextVod.title,
           });
           broadcastQueueStatus();
+
+          if (this.autoProcess) {
+            try {
+              console.log(`Auto-processing VOD ${nextVod.id}...`);
+              await processVod(nextVod.id);
+
+              if (this.autoAddToPlaylist) {
+                console.log(`Auto-updating playlist after processing VOD ${nextVod.id}...`);
+                await updatePlaylist();
+              }
+            } catch (processError) {
+              console.error(`Auto-process failed for VOD ${nextVod.id}:`, processError.message);
+            }
+          }
         } catch (error) {
           // Check if error is due to cancellation/pause/stop
           if (error.message && (

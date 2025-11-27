@@ -287,13 +287,13 @@ async function detectMutedSegmentsWithFfmpeg(
   videoPath,
   videoDuration = null,
   progressCallback = null,
-  opts = {} // optional, backward compatible
+  opts = {}
 ) {
   const {
-    noiseDb = -25,
-    minSilence = 3,
-    minSegment = 3,
-    mergeGap = 0.25,
+    noiseDb = -30,
+    minSilence = 5,
+    minSegment = 10,
+    mergeGap = 2,
     log = true,
   } = opts;
 
@@ -331,24 +331,26 @@ async function detectMutedSegmentsWithFfmpeg(
     );
   }
 
-  const mergeSegments = (segments) => {
+  const mergeSegments = (segments, minDuration = minSegment) => {
     if (!segments.length) return [];
     const sorted = [...segments].sort((a, b) => a.offset - b.offset);
-    const out = [sorted[0]];
+    const merged = [{ ...sorted[0] }];
 
     for (let i = 1; i < sorted.length; i++) {
-      const prev = out[out.length - 1];
+      const prev = merged[merged.length - 1];
       const cur = sorted[i];
       const prevEnd = prev.offset + prev.duration;
+      const gap = cur.offset - prevEnd;
 
-      if (cur.offset - prevEnd <= mergeGap) {
+      if (gap <= mergeGap) {
         const newEnd = Math.max(prevEnd, cur.offset + cur.duration);
         prev.duration = newEnd - prev.offset;
       } else {
-        out.push(cur);
+        merged.push({ ...cur });
       }
     }
-    return out;
+
+    return merged.filter((seg) => seg.duration >= minDuration);
   };
 
   return new Promise((resolve, reject) => {
@@ -538,10 +540,14 @@ export async function processVod(vodId) {
   );
 
   try {
+    const MIN_MUTE_DURATION = 10;
     let mutedSegments = JSON.parse(vod.muted_segments || '[]');
     const outputPath = resolve(PROCESSED_STORAGE, `${vodId}_processed.mp4`);
 
-    // If muted_segments is null or empty, try to detect mutes using ffmpeg
+    mutedSegments = mutedSegments.filter(
+      (seg) => seg.duration >= MIN_MUTE_DURATION
+    );
+
     if (
       mutedSegments.length === 0 &&
       vod.file_path &&
@@ -613,12 +619,16 @@ export async function processVod(vodId) {
     }
 
     const totalDuration = parseDuration(vod.duration);
-    const keepSegments = [];
+    const MIN_KEEP_DURATION = 5;
+
+    mutedSegments.sort((a, b) => a.offset - b.offset);
+
+    const allKeepSegments = [];
     let lastEnd = 0;
 
     for (const segment of mutedSegments) {
       if (segment.offset > lastEnd) {
-        keepSegments.push({
+        allKeepSegments.push({
           start: lastEnd,
           end: segment.offset,
         });
@@ -627,10 +637,80 @@ export async function processVod(vodId) {
     }
 
     if (lastEnd < totalDuration) {
-      keepSegments.push({
+      allKeepSegments.push({
         start: lastEnd,
         end: totalDuration,
       });
+    }
+
+    const keepSegments = allKeepSegments.filter(
+      (seg) => seg.end - seg.start >= MIN_KEEP_DURATION
+    );
+
+    console.log(
+      `VOD ${vodId}: ${mutedSegments.length} muted segments, ${keepSegments.length} segments to keep`
+    );
+
+    if (keepSegments.length === 0) {
+      console.log(
+        `VOD ${vodId}: No segments to keep after filtering, copying original`
+      );
+      const { copyFileSync } = await import('fs');
+      copyFileSync(vod.file_path, outputPath);
+
+      db.prepare(
+        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+      ).run('completed', outputPath, vodId);
+
+      broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
+      return outputPath;
+    }
+
+    if (keepSegments.length === 1) {
+      const segment = keepSegments[0];
+      const isFullFile = segment.start < 1 && segment.end >= totalDuration - 1;
+
+      if (isFullFile) {
+        console.log(
+          `VOD ${vodId}: Single segment is full file, copying original`
+        );
+        const { copyFileSync } = await import('fs');
+        copyFileSync(vod.file_path, outputPath);
+      } else {
+        console.log(
+          `VOD ${vodId}: Extracting single segment ${segment.start.toFixed(
+            1
+          )}s - ${segment.end.toFixed(1)}s`
+        );
+        broadcastStatus({
+          type: 'process_progress',
+          vodId,
+          stage: 'extracting_segments',
+          message: `Extracting segment (${segment.start.toFixed(
+            1
+          )}s - ${segment.end.toFixed(1)}s)`,
+          segment: 1,
+          total: 1,
+        });
+
+        await new Promise((resolvePromise, reject) => {
+          ffmpeg(vod.file_path)
+            .setStartTime(segment.start)
+            .setDuration(segment.end - segment.start)
+            .outputOptions('-c copy')
+            .output(outputPath)
+            .on('end', resolvePromise)
+            .on('error', reject)
+            .run();
+        });
+      }
+
+      db.prepare(
+        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+      ).run('completed', outputPath, vodId);
+
+      broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
+      return outputPath;
     }
 
     broadcastStatus({
@@ -643,6 +723,7 @@ export async function processVod(vodId) {
     });
 
     const segmentFiles = [];
+    const { writeFileSync, unlinkSync } = await import('fs');
 
     for (let i = 0; i < keepSegments.length; i++) {
       const segment = keepSegments[i];
@@ -651,7 +732,7 @@ export async function processVod(vodId) {
         `${vodId}_segment_${i}.mp4`
       );
 
-      await new Promise((resolve, reject) => {
+      await new Promise((resolvePromise, reject) => {
         ffmpeg(vod.file_path)
           .setStartTime(segment.start)
           .setDuration(segment.end - segment.start)
@@ -659,7 +740,7 @@ export async function processVod(vodId) {
           .output(segmentPath)
           .on('end', () => {
             segmentFiles.push(segmentPath);
-            resolve();
+            resolvePromise();
           })
           .on('error', reject)
           .run();
@@ -685,9 +766,7 @@ export async function processVod(vodId) {
     });
 
     const concatListPath = resolve(PROCESSED_STORAGE, `${vodId}_concat.txt`);
-    const { writeFileSync, unlinkSync } = await import('fs');
 
-    // Use absolute paths for segment files in concat list
     const absoluteSegmentFiles = segmentFiles.map((f) => resolve(f));
     writeFileSync(
       concatListPath,

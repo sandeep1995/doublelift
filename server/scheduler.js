@@ -2,13 +2,16 @@ import cron from 'node-cron';
 import { getDatabase } from './database.js';
 import { getChannelId, getRecentVods, getMutedSegments } from './twitch-api.js';
 import { broadcastStatus } from './websocket.js';
+import { downloadQueue } from './download-queue.js';
+
+const AUTO_DOWNLOAD = process.env.AUTO_DOWNLOAD !== 'false';
+const SCAN_SCHEDULE = process.env.SCAN_SCHEDULE || '0 */6 * * *';
 
 export function startScheduler() {
-  const schedule = process.env.SCAN_SCHEDULE || '0 0 * * *';
+  console.log(`Scheduler started with schedule: ${SCAN_SCHEDULE}`);
+  console.log(`Auto-download enabled: ${AUTO_DOWNLOAD}`);
 
-  console.log(`Scheduler started with schedule: ${schedule}`);
-
-  cron.schedule(schedule, async () => {
+  cron.schedule(SCAN_SCHEDULE, async () => {
     console.log('Running scheduled VOD scan...');
     await scanAndProcessVods();
   });
@@ -57,8 +60,8 @@ export async function scanAndProcessVods(options = {}) {
 
         db.prepare(
           `
-          INSERT INTO vods (id, title, url, duration, created_at, muted_segments)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO vods (id, title, url, duration, created_at, muted_segments, download_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `
         ).run(
           vod.id,
@@ -66,7 +69,8 @@ export async function scanAndProcessVods(options = {}) {
           vod.url,
           vod.duration,
           vod.created_at,
-          JSON.stringify(mutedSegments)
+          JSON.stringify(mutedSegments),
+          AUTO_DOWNLOAD ? 'queued' : 'pending'
         );
 
         console.log(`Added new VOD: ${vod.title} (${vod.id})`);
@@ -85,6 +89,11 @@ export async function scanAndProcessVods(options = {}) {
     });
 
     console.log(`Scan complete: ${newVodsCount} new VODs added`);
+
+    if (AUTO_DOWNLOAD && newVodsCount > 0) {
+      console.log('Auto-starting download queue for new VODs...');
+      downloadQueue.processQueue();
+    }
   } catch (error) {
     console.error('Error during VOD scan:', error);
     broadcastStatus({ type: 'scan_error', error: error.message });
