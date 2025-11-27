@@ -43,6 +43,28 @@ function VodList() {
     await refreshVods();
   };
 
+  const handleCancelQueue = async () => {
+    for (const vod of pendingVods) {
+      if (vod.download_status === 'queued') {
+        try {
+          await fetch(`/api/vods/${vod.id}/stop`, { method: 'POST' });
+        } catch (error) {
+          console.error('Failed to cancel:', error);
+        }
+      }
+    }
+    await refreshVods();
+  };
+
+  const handleCancelOne = async (vodId) => {
+    try {
+      await fetch(`/api/vods/${vodId}/stop`, { method: 'POST' });
+      await refreshVods();
+    } catch (error) {
+      console.error('Failed to cancel:', error);
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -54,15 +76,26 @@ function VodList() {
     <div className='card vod-list'>
       <div className='vod-list-header'>
         <h2>VOD Library</h2>
-        {pendingVods.filter((v) => v.download_status === 'pending').length >
-          0 && (
-          <button
-            className='action-btn btn-primary'
-            onClick={handleDownloadAll}
-          >
-            Download All
-          </button>
-        )}
+        <div className='header-actions'>
+          {pendingVods.filter((v) => v.download_status === 'queued').length >
+            0 && (
+            <button
+              className='action-btn btn-warning'
+              onClick={handleCancelQueue}
+            >
+              Cancel Queue
+            </button>
+          )}
+          {pendingVods.filter((v) => v.download_status === 'pending').length >
+            0 && (
+            <button
+              className='action-btn btn-primary'
+              onClick={handleDownloadAll}
+            >
+              Download All
+            </button>
+          )}
+        </div>
       </div>
 
       <div className='vod-count'>
@@ -105,8 +138,15 @@ function VodList() {
                 {vod.error_message && (
                   <div className='vod-error'>{vod.error_message}</div>
                 )}
-                {!isQueued && (
-                  <div className='vod-actions'>
+                <div className='vod-actions'>
+                  {isQueued ? (
+                    <button
+                      className='action-btn btn-warning'
+                      onClick={() => handleCancelOne(vod.id)}
+                    >
+                      Cancel
+                    </button>
+                  ) : (
                     <button
                       className='action-btn btn-primary'
                       onClick={() => handleDownload(vod.id)}
@@ -118,8 +158,8 @@ function VodList() {
                         ? 'Retry'
                         : 'Download'}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
           })
