@@ -4,6 +4,21 @@ import { getDatabase } from './database.js';
 import { getPlaylist } from './playlist-manager.js';
 import { broadcastStatus } from './websocket.js';
 
+const isWindows = process.platform === 'win32';
+
+function killStreamProcess(proc) {
+  if (!proc) return;
+  try {
+    if (isWindows) {
+      proc.kill();
+    } else {
+      proc.kill('SIGINT');
+    }
+  } catch (error) {
+    console.error('Error killing stream process:', error);
+  }
+}
+
 class StreamManager {
   constructor() {
     this.currentStreamProcess = null;
@@ -145,8 +160,7 @@ class StreamManager {
     this.isStreaming = false;
 
     if (this.currentStreamProcess) {
-      // Set a flag to ignore the error from graceful shutdown
-      this.currentStreamProcess.kill('SIGINT');
+      killStreamProcess(this.currentStreamProcess);
       this.currentStreamProcess = null;
     }
 
@@ -192,11 +206,10 @@ class StreamManager {
     }
 
     if (this.currentStreamProcess) {
-      this.currentStreamProcess.kill('SIGINT');
+      killStreamProcess(this.currentStreamProcess);
       this.currentStreamProcess = null;
     }
 
-    // streamNext will be called automatically via the 'end' event
     return { success: true, message: 'Skipping to next VOD' };
   }
 
@@ -213,7 +226,7 @@ class StreamManager {
     this.currentIndex = index;
 
     if (this.currentStreamProcess) {
-      this.currentStreamProcess.kill('SIGINT');
+      killStreamProcess(this.currentStreamProcess);
       this.currentStreamProcess = null;
     }
 
@@ -235,12 +248,11 @@ class StreamManager {
 
     this.playlist = newPlaylist;
 
-    // If current VOD is not in new playlist, skip to next
     const currentVodId = this.getCurrentVodId();
     const stillInPlaylist = newPlaylist.some((p) => p.vod_id === currentVodId);
 
     if (!stillInPlaylist && this.currentStreamProcess) {
-      this.currentStreamProcess.kill('SIGINT');
+      killStreamProcess(this.currentStreamProcess);
       this.currentStreamProcess = null;
     }
 

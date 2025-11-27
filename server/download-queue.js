@@ -5,6 +5,23 @@ import { updatePlaylist } from './playlist-manager.js';
 
 import * as vodProcessor from './vod-processor.js';
 
+const isWindows = process.platform === 'win32';
+
+function killProcess(proc) {
+  if (!proc) return false;
+  try {
+    if (isWindows) {
+      proc.kill();
+    } else {
+      proc.kill('SIGTERM');
+    }
+    return true;
+  } catch (error) {
+    console.error('Error killing process:', error);
+    return false;
+  }
+}
+
 let downloadQueueInstance = null;
 
 function broadcastQueueStatus() {
@@ -310,28 +327,11 @@ class DownloadQueue {
       'UPDATE vods SET download_status = ?, error_message = NULL WHERE id = ?'
     ).run('paused', vodId);
 
-    // Kill the download process
-    let processKilled = false;
-    if (this.currentDownloadProcess) {
-      try {
-        this.currentDownloadProcess.kill('SIGTERM');
-        processKilled = true;
-      } catch (error) {
-        console.error(`Error killing download process for VOD ${vodId}:`, error);
-      }
-    }
+    let processKilled = killProcess(this.currentDownloadProcess);
 
-    // Also try to kill via activeProcesses map
     if (!processKilled && vodProcessor.downloadVod.activeProcesses) {
-      const process = vodProcessor.downloadVod.activeProcesses.get(vodId);
-      if (process) {
-        try {
-          process.kill('SIGTERM');
-          processKilled = true;
-        } catch (error) {
-          console.error(`Error killing download process for VOD ${vodId}:`, error);
-        }
-      }
+      const proc = vodProcessor.downloadVod.activeProcesses.get(vodId);
+      processKilled = killProcess(proc);
     }
 
     this.currentDownloadProcess = null;
@@ -393,32 +393,14 @@ class DownloadQueue {
     ).run('cancelled', vodId);
 
     if ((vod.download_status === 'downloading' || vod.download_status === 'paused') && this.currentDownload === vodId) {
-      // Kill the download process
-      let processKilled = false;
-      if (this.currentDownloadProcess) {
-        try {
-          this.currentDownloadProcess.kill('SIGTERM');
-          processKilled = true;
-        } catch (error) {
-          console.error(`Error killing download process for VOD ${vodId}:`, error);
-        }
-      }
+      let processKilled = killProcess(this.currentDownloadProcess);
 
-      // Also try to kill via activeProcesses map
       if (!processKilled && vodProcessor.downloadVod.activeProcesses) {
-        const process = vodProcessor.downloadVod.activeProcesses.get(vodId);
-        if (process) {
-          try {
-            process.kill('SIGTERM');
-          } catch (error) {
-            console.error(`Error killing download process for VOD ${vodId}:`, error);
-          }
-        }
+        const proc = vodProcessor.downloadVod.activeProcesses.get(vodId);
+        killProcess(proc);
       }
 
       this.currentDownloadProcess = null;
-
-      // Clear paused flag if set
       this.isPaused = false;
       this.currentDownload = null;
     }

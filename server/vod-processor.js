@@ -6,6 +6,10 @@ import { getDatabase } from './database.js';
 import { getMutedSegments } from './twitch-api.js';
 import { broadcastStatus } from './websocket.js';
 import readline from 'readline';
+
+function toFfmpegPath(filePath) {
+  return filePath.replace(/\\/g, '/');
+}
 const VOD_STORAGE = process.env.VOD_STORAGE_PATH || './vods';
 const PROCESSED_STORAGE = process.env.PROCESSED_STORAGE_PATH || './processed';
 const CACHE_DIR =
@@ -127,10 +131,11 @@ export async function downloadVod(vodId) {
         return progress;
       };
 
-      // Use twitch-dl to download the VOD
+      const isWindows = process.platform === 'win32';
       const twitchDl = spawn('twitch-dl', args, {
         cwd: VOD_STORAGE,
         env: { ...process.env },
+        shell: isWindows,
       });
 
       // Store process reference for cancellation immediately
@@ -303,7 +308,8 @@ async function detectMutedSegmentsWithFfmpeg(
   if (videoDuration)
     logIt(`[Mute Detection] Video duration (given): ${videoDuration}s`);
 
-  // Probe duration once if not provided
+  const isWindows = process.platform === 'win32';
+
   const probeDuration = () =>
     new Promise((resolve) => {
       const p = spawn('ffprobe', [
@@ -314,7 +320,7 @@ async function detectMutedSegmentsWithFfmpeg(
         '-of',
         'default=noprint_wrappers=1:nokey=1',
         videoPath,
-      ]);
+      ], { shell: isWindows });
       let out = '';
       p.stdout.on('data', (d) => (out += d.toString()));
       p.on('close', () => {
@@ -362,15 +368,15 @@ async function detectMutedSegmentsWithFfmpeg(
     const ffmpegProcess = spawn('ffmpeg', [
       '-hide_banner',
       '-nostdin',
-      '-vn', // skip video decode for speed
+      '-vn',
       '-i',
       videoPath,
       '-af',
       `silencedetect=noise=${noiseDb}dB:duration=${minSilence}`,
       '-f',
       'null',
-      '-',
-    ]);
+      isWindows ? 'NUL' : '-',
+    ], { shell: isWindows });
 
     const rl = readline.createInterface({ input: ffmpegProcess.stderr });
 
@@ -793,7 +799,7 @@ export async function processVod(vodId) {
 
     const concatListPath = resolve(PROCESSED_STORAGE, `${vodId}_concat.txt`);
 
-    const absoluteSegmentFiles = segmentFiles.map((f) => resolve(f));
+    const absoluteSegmentFiles = segmentFiles.map((f) => toFfmpegPath(resolve(f)));
     writeFileSync(
       concatListPath,
       absoluteSegmentFiles.map((f) => `file '${f}'`).join('\n')
