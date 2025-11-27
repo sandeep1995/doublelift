@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import { initDatabase } from './database.js';
 import { startScheduler } from './scheduler.js';
 import { downloadQueue } from './download-queue.js';
+import { streamManager } from './stream-manager.js';
+import { cleanupPlaylist } from './playlist-manager.js';
 import vodRoutes from './routes/vod.js';
 import streamRoutes from './routes/stream.js';
 import statusRoutes from './routes/status.js';
@@ -24,8 +26,9 @@ app.use(express.json());
 
 initDatabase();
 
-// Reset any stuck downloads from previous session
 downloadQueue.resetStuckDownloads();
+streamManager.resetStuckState();
+cleanupPlaylist();
 
 app.use('/api/vods', vodRoutes);
 app.use('/api/stream', streamRoutes);

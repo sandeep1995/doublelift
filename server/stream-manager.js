@@ -1,4 +1,5 @@
 import ffmpeg from 'fluent-ffmpeg';
+import { existsSync } from 'fs';
 import { getDatabase } from './database.js';
 import { getPlaylist } from './playlist-manager.js';
 import { broadcastStatus } from './websocket.js';
@@ -11,6 +12,25 @@ class StreamManager {
     this.playlist = [];
     this.streamKey = null;
     this.isStopping = false;
+  }
+
+  resetStuckState() {
+    const db = getDatabase();
+    const state = db.prepare('SELECT * FROM stream_state WHERE id = 1').get();
+
+    if (state && state.is_streaming && !this.isStreaming) {
+      console.log('Resetting stuck stream state from previous session');
+      db.prepare(
+        `UPDATE stream_state 
+         SET is_streaming = 0, 
+             current_vod_id = NULL,
+             stream_started_at = NULL,
+             current_vod_started_at = NULL,
+             last_vod_id = ?,
+             last_vod_index = ?
+         WHERE id = 1`
+      ).run(state.current_vod_id, state.last_vod_index);
+    }
   }
 
   async start(options = {}) {
@@ -97,7 +117,7 @@ class StreamManager {
       startIndex: this.currentIndex,
       resumed: resume,
     });
-    
+
     // Broadcast unified stream status update
     const status = this.getStatus();
     broadcastStatus({
@@ -150,7 +170,7 @@ class StreamManager {
       lastPosition: this.currentIndex + 1,
       lastVodId: currentVodId,
     });
-    
+
     // Broadcast unified stream status update
     const status = this.getStatus();
     broadcastStatus({
@@ -234,8 +254,20 @@ class StreamManager {
     return null;
   }
 
-  streamNext() {
+  streamNext(skipCount = 0) {
     if (!this.isStreaming || this.isStopping) {
+      return;
+    }
+
+    if (this.playlist.length === 0) {
+      console.error('Playlist is empty, stopping stream');
+      this.stop();
+      return;
+    }
+
+    if (skipCount >= this.playlist.length) {
+      console.error('No valid VODs found in playlist, stopping stream');
+      this.stop();
       return;
     }
 
@@ -244,6 +276,25 @@ class StreamManager {
     }
 
     const currentVod = this.playlist[this.currentIndex];
+
+    if (!currentVod || !currentVod.processed_file_path) {
+      console.error(
+        `VOD at index ${this.currentIndex} has no processed file, skipping`
+      );
+      this.currentIndex++;
+      setTimeout(() => this.streamNext(skipCount + 1), 100);
+      return;
+    }
+
+    if (!existsSync(currentVod.processed_file_path)) {
+      console.error(
+        `File not found: ${currentVod.processed_file_path}, skipping`
+      );
+      this.currentIndex++;
+      setTimeout(() => this.streamNext(skipCount + 1), 100);
+      return;
+    }
+
     const db = getDatabase();
     const vodStartTime = new Date().toISOString();
     db.prepare(
@@ -251,7 +302,7 @@ class StreamManager {
     ).run(currentVod.vod_id, vodStartTime);
 
     console.log(`Streaming: ${currentVod.title}`);
-    
+
     // Broadcast unified stream status update
     const status = this.getStatus();
     broadcastStatus({
@@ -263,7 +314,7 @@ class StreamManager {
       duration: currentVod.duration,
       startedAt: vodStartTime,
     });
-    
+
     // Also broadcast full status for state sync
     broadcastStatus({
       type: 'stream_status_update',
@@ -327,20 +378,20 @@ class StreamManager {
 
         console.log(`Finished streaming: ${currentVod.title}`);
         this.currentIndex++;
-        
+
         // Persist progress update before moving to next
         const db = getDatabase();
         db.prepare(
           'UPDATE stream_state SET current_vod_id = ?, current_vod_started_at = NULL WHERE id = 1'
         ).run(null);
-        
+
         // Broadcast unified stream status update
         const status = this.getStatus();
         broadcastStatus({
           type: 'stream_status_update',
           ...status,
         });
-        
+
         setTimeout(() => this.streamNext(), 1000);
       })
       .on('error', (err) => {

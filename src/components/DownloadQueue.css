@@ -1,0 +1,164 @@
+.download-queue {
+  height: 100%;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.download-queue h2 {
+  color: #1e40af;
+}
+
+.download-queue .queue-icon {
+  font-size: 1.1rem;
+}
+
+.queue-count {
+  background: #3b82f6;
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  margin-left: auto;
+}
+
+.queue-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.queue-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.queue-items::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.queue-items::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.queue-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.queue-item.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.queue-item.queued {
+  opacity: 0.7;
+}
+
+.queue-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.queue-item-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #1e293b;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-item-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.queue-item.queued .queue-item-status {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.queue-progress-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.queue-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.queue-item-details {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+}
+
+.queue-percent {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.queue-item-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.queue-btn {
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.queue-btn.pause {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.queue-btn.pause:hover {
+  background: #fde68a;
+}
+
+.queue-btn.stop {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.queue-btn.stop:hover {
+  background: #fecaca;
+}
+
+.download-queue .empty-state {
+  color: #94a3b8;
+  text-align: center;
+  padding: 2rem 1rem;
+  font-size: 0.9rem;
+}
+

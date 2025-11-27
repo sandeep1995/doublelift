@@ -213,6 +213,7 @@ export function useServerEvents() {
             [data.vodId]: {
               message: data.message,
               stage: data.stage,
+              percent: data.percent,
               segmentsFound: data.segmentsFound,
               latestSegment: data.latestSegment,
               segment: data.segment,

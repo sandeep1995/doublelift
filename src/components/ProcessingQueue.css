@@ -1,0 +1,169 @@
+.processing-queue {
+  height: 100%;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.processing-queue .queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.processing-queue .queue-header h2 {
+  margin: 0;
+}
+
+.processing-queue h2 {
+  color: #047857;
+}
+
+.processing-queue .queue-icon {
+  font-size: 1.1rem;
+}
+
+.processing-queue .queue-count {
+  background: #10b981;
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  margin-left: auto;
+}
+
+.processing-queue .queue-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.processing-queue .queue-items::-webkit-scrollbar {
+  width: 6px;
+}
+
+.processing-queue .queue-items::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.processing-queue .queue-items::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.processing-queue .queue-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.processing-queue .queue-item.active {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.processing-queue .queue-item.pending {
+  opacity: 0.8;
+}
+
+.processing-queue .queue-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.processing-queue .queue-item-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #1e293b;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.processing-queue .queue-item-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #d1fae5;
+  color: #047857;
+}
+
+.processing-queue .queue-item.pending .queue-item-status {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.processing-queue .queue-progress-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.processing-queue .queue-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.processing-queue .queue-item-details {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.processing-queue .queue-percent {
+  font-weight: 600;
+  color: #059669;
+}
+
+.processing-queue .queue-stage {
+  color: #64748b;
+}
+
+.processing-queue .queue-item-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.processing-queue .queue-btn {
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.processing-queue .queue-btn.process {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.processing-queue .queue-btn.process:hover {
+  background: #a7f3d0;
+}
+
+.processing-queue .empty-state {
+  color: #94a3b8;
+  text-align: center;
+  padding: 2rem 1rem;
+  font-size: 0.9rem;
+}
+

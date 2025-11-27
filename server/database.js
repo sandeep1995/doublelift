@@ -28,6 +28,7 @@ export function initDatabase() {
       download_status TEXT DEFAULT 'pending',
       process_status TEXT DEFAULT 'pending',
       download_progress INTEGER DEFAULT 0,
+      process_progress INTEGER DEFAULT 0,
       muted_segments TEXT,
       file_path TEXT,
       processed_file_path TEXT,
@@ -68,6 +69,10 @@ export function initDatabase() {
   if (!columnNames.includes('last_attempt_at')) {
     db.exec(`ALTER TABLE vods ADD COLUMN last_attempt_at TEXT`);
     console.log('Added last_attempt_at column');
+  }
+  if (!columnNames.includes('process_progress')) {
+    db.exec(`ALTER TABLE vods ADD COLUMN process_progress INTEGER DEFAULT 0`);
+    console.log('Added process_progress column');
   }
 
   db.exec(`

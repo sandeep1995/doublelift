@@ -3,6 +3,8 @@ import Dashboard from './components/Dashboard';
 import StreamControls from './components/StreamControls';
 import VodList from './components/VodList';
 import Playlist from './components/Playlist';
+import DownloadQueue from './components/DownloadQueue';
+import ProcessingQueue from './components/ProcessingQueue';
 import ActivityLog from './components/ActivityLog';
 import Notifications from './components/Notifications';
 import './App.css';
@@ -32,6 +34,11 @@ function App() {
         <Notifications errors={errors} onDismiss={dismissError} onClear={clearErrors} />
         <Dashboard status={status} />
         <StreamControls status={status} onUpdate={refreshStatus} />
+
+        <div className='two-column'>
+          <DownloadQueue />
+          <ProcessingQueue />
+        </div>
 
         <div className='two-column'>
           <VodList />

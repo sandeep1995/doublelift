@@ -534,10 +534,9 @@ export async function processVod(vodId) {
 
   broadcastStatus({ type: 'process_start', vodId, title: vod.title });
 
-  db.prepare('UPDATE vods SET process_status = ? WHERE id = ?').run(
-    'processing',
-    vodId
-  );
+  db.prepare(
+    'UPDATE vods SET process_status = ?, process_progress = 0 WHERE id = ?'
+  ).run('processing', vodId);
 
   try {
     const MIN_MUTE_DURATION = 10;
@@ -556,9 +555,14 @@ export async function processVod(vodId) {
       console.log(
         `No muted segments from Twitch API for VOD ${vodId}, detecting with ffmpeg...`
       );
+      db.prepare('UPDATE vods SET process_progress = ? WHERE id = ?').run(
+        10,
+        vodId
+      );
       broadcastStatus({
         type: 'process_progress',
         vodId,
+        percent: 10,
         message: 'Detecting muted segments with ffmpeg...',
       });
 
@@ -591,11 +595,9 @@ export async function processVod(vodId) {
           `Detected ${mutedSegments.length} muted segment(s) for VOD ${vodId}`
         );
 
-        // Update database with detected muted segments
-        db.prepare('UPDATE vods SET muted_segments = ? WHERE id = ?').run(
-          JSON.stringify(mutedSegments),
-          vodId
-        );
+        db.prepare(
+          'UPDATE vods SET muted_segments = ?, process_progress = ? WHERE id = ?'
+        ).run(JSON.stringify(mutedSegments), 30, vodId);
       } catch (error) {
         console.error(
           `Failed to detect muted segments with ffmpeg for VOD ${vodId}:`,
@@ -611,7 +613,7 @@ export async function processVod(vodId) {
       copyFileSync(vod.file_path, outputPath);
 
       db.prepare(
-        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+        'UPDATE vods SET processed = 1, process_status = ?, process_progress = 100, processed_file_path = ?, error_message = NULL WHERE id = ?'
       ).run('completed', outputPath, vodId);
 
       broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
@@ -659,7 +661,7 @@ export async function processVod(vodId) {
       copyFileSync(vod.file_path, outputPath);
 
       db.prepare(
-        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+        'UPDATE vods SET processed = 1, process_status = ?, process_progress = 100, processed_file_path = ?, error_message = NULL WHERE id = ?'
       ).run('completed', outputPath, vodId);
 
       broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
@@ -682,10 +684,15 @@ export async function processVod(vodId) {
             1
           )}s - ${segment.end.toFixed(1)}s`
         );
+        db.prepare('UPDATE vods SET process_progress = ? WHERE id = ?').run(
+          50,
+          vodId
+        );
         broadcastStatus({
           type: 'process_progress',
           vodId,
           stage: 'extracting_segments',
+          percent: 50,
           message: `Extracting segment (${segment.start.toFixed(
             1
           )}s - ${segment.end.toFixed(1)}s)`,
@@ -706,17 +713,23 @@ export async function processVod(vodId) {
       }
 
       db.prepare(
-        'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+        'UPDATE vods SET processed = 1, process_status = ?, process_progress = 100, processed_file_path = ?, error_message = NULL WHERE id = ?'
       ).run('completed', outputPath, vodId);
 
       broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
       return outputPath;
     }
 
+    db.prepare('UPDATE vods SET process_progress = ? WHERE id = ?').run(
+      30,
+      vodId
+    );
+
     broadcastStatus({
       type: 'process_progress',
       vodId,
       stage: 'extracting_segments',
+      percent: 30,
       message: `Extracting ${keepSegments.length} segment(s) from video...`,
       segment: 0,
       total: keepSegments.length,
@@ -746,10 +759,17 @@ export async function processVod(vodId) {
           .run();
       });
 
+      const progress = Math.round(30 + ((i + 1) / keepSegments.length) * 60);
+      db.prepare('UPDATE vods SET process_progress = ? WHERE id = ?').run(
+        progress,
+        vodId
+      );
+
       broadcastStatus({
         type: 'process_progress',
         vodId,
         stage: 'extracting_segments',
+        percent: progress,
         message: `Extracted segment ${i + 1}/${
           keepSegments.length
         } (${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s)`,
@@ -758,10 +778,16 @@ export async function processVod(vodId) {
       });
     }
 
+    db.prepare('UPDATE vods SET process_progress = ? WHERE id = ?').run(
+      95,
+      vodId
+    );
+
     broadcastStatus({
       type: 'process_progress',
       vodId,
       stage: 'concatenating',
+      percent: 95,
       message: 'Concatenating segments...',
     });
 
@@ -789,14 +815,14 @@ export async function processVod(vodId) {
     });
 
     db.prepare(
-      'UPDATE vods SET processed = 1, process_status = ?, processed_file_path = ?, error_message = NULL WHERE id = ?'
+      'UPDATE vods SET processed = 1, process_status = ?, process_progress = 100, processed_file_path = ?, error_message = NULL WHERE id = ?'
     ).run('completed', outputPath, vodId);
 
     broadcastStatus({ type: 'process_complete', vodId, title: vod.title });
     return outputPath;
   } catch (error) {
     db.prepare(
-      'UPDATE vods SET process_status = ?, error_message = ? WHERE id = ?'
+      'UPDATE vods SET process_status = ?, process_progress = 0, error_message = ? WHERE id = ?'
     ).run('failed', error.message, vodId);
 
     broadcastStatus({ type: 'process_error', vodId, error: error.message });

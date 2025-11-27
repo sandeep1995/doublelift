@@ -1,5 +1,58 @@
+import { existsSync } from 'fs';
 import { getDatabase } from './database.js';
 import { broadcastStatus } from './websocket.js';
+
+export function cleanupPlaylist() {
+  const db = getDatabase();
+
+  const invalidEntries = db
+    .prepare(
+      `SELECT p.vod_id, v.processed_file_path 
+       FROM playlist p 
+       LEFT JOIN vods v ON p.vod_id = v.id 
+       WHERE v.processed_file_path IS NULL 
+          OR v.processed = 0 
+          OR v.id IS NULL`
+    )
+    .all();
+
+  const validEntries = db
+    .prepare(
+      `SELECT p.vod_id, v.processed_file_path 
+       FROM playlist p 
+       JOIN vods v ON p.vod_id = v.id 
+       WHERE v.processed_file_path IS NOT NULL AND v.processed = 1`
+    )
+    .all();
+
+  const missingFiles = validEntries.filter(
+    (e) => !existsSync(e.processed_file_path)
+  );
+
+  const toRemove = [
+    ...invalidEntries.map((e) => e.vod_id),
+    ...missingFiles.map((e) => e.vod_id),
+  ];
+
+  if (toRemove.length > 0) {
+    console.log(`Cleaning up ${toRemove.length} invalid playlist entries`);
+    for (const vodId of toRemove) {
+      db.prepare('DELETE FROM playlist WHERE vod_id = ?').run(vodId);
+    }
+
+    const remaining = db
+      .prepare('SELECT * FROM playlist ORDER BY position')
+      .all();
+    remaining.forEach((item, index) => {
+      db.prepare('UPDATE playlist SET position = ? WHERE vod_id = ?').run(
+        index,
+        item.vod_id
+      );
+    });
+
+    console.log(`Playlist cleanup complete. ${remaining.length} entries remain`);
+  }
+}
 
 function parseDuration(duration) {
   const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
@@ -16,13 +69,13 @@ export async function updatePlaylist() {
 
   const processedVods = db
     .prepare(
-      `
-    SELECT * FROM vods 
-    WHERE processed = 1 
-    ORDER BY created_at DESC
-  `
+      `SELECT * FROM vods 
+       WHERE processed = 1 
+         AND processed_file_path IS NOT NULL
+       ORDER BY created_at DESC`
     )
-    .all();
+    .all()
+    .filter((vod) => existsSync(vod.processed_file_path));
 
   if (processedVods.length === 0) {
     console.log('No processed VODs available for playlist');
@@ -39,10 +92,8 @@ export async function updatePlaylist() {
 
     if (totalDuration + vodDuration <= TARGET_DURATION) {
       db.prepare(
-        `
-        INSERT INTO playlist (vod_id, position, added_at)
-        VALUES (?, ?, ?)
-      `
+        `INSERT INTO playlist (vod_id, position, added_at)
+         VALUES (?, ?, ?)`
       ).run(vod.id, position, new Date().toISOString());
 
       totalDuration += vodDuration;
@@ -121,6 +172,10 @@ export async function addVodToPlaylist(vodId) {
 
   if (!vod.processed) {
     throw new Error(`VOD ${vodId} is not processed yet`);
+  }
+
+  if (!vod.processed_file_path || !existsSync(vod.processed_file_path)) {
+    throw new Error(`VOD ${vodId} processed file not found`);
   }
 
   if (isVodInPlaylist(vodId)) {
